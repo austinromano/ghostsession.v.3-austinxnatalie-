@@ -31,3 +31,7 @@ apps/server/uploads/
 # JUCE builds
 JUCE/
 GhostSession/build/
+
+# WebView2 SDK (downloaded at build time)
+apps/plugin/webview2.nupkg
+apps/plugin/webview2_sdk/

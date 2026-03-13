@@ -34,6 +34,11 @@ app.route('/api/v1/projects/:id/files', fileRoutes);
 app.route('/api/v1/projects/:id/sessions', sessionRoutes);
 app.route('/api/v1/invitations', invitationRoutes);
 
+// Serve the desktop app build for plugin WebView (production mode)
+import { serveStatic } from '@hono/node-server/serve-static';
+app.use('/app/*', serveStatic({ root: '../desktop/dist', rewriteRequestPath: (p) => p.replace('/app', '') }));
+app.get('/app', serveStatic({ root: '../desktop/dist', path: '/index.html' }));
+
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

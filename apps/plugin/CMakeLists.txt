@@ -116,7 +116,8 @@ target_link_libraries(GhostSession
 
 target_compile_definitions(GhostSession
     PUBLIC
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=1
+        JUCE_USE_WIN_WEBVIEW2=1
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
@@ -125,7 +126,12 @@ target_compile_definitions(GhostSession
 )
 
 if(WIN32)
-    target_link_libraries(GhostSession PRIVATE ws2_32 winhttp crypt32)
+    # WebView2 SDK
+    set(WEBVIEW2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/webview2_sdk/build/native")
+    target_include_directories(GhostSession PRIVATE "${WEBVIEW2_DIR}/include")
+    target_link_libraries(GhostSession PRIVATE
+        "${WEBVIEW2_DIR}/x64/WebView2LoaderStatic.lib"
+        ws2_32 winhttp crypt32)
 elseif(APPLE)
     find_library(SECURITY_FRAMEWORK Security)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)

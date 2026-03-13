@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { isPlugin } from './lib/hostContext';
 import AppShell from './components/layout/AppShell';
 import SessionShell from './components/layout/SessionShell';
+import PluginLayout from './components/plugin/PluginLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -16,6 +18,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // Plugin mode: show the classic plugin layout
+  if (isPlugin) {
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    if (!isAuthenticated) return <LoginPage />;
+    return <PluginLayout />;
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

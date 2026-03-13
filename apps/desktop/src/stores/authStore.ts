@@ -60,6 +60,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   restore: () => {
+    // Check for token passed via URL (from JUCE plugin WebView)
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      setToken(urlToken);
+      connectSocket(urlToken);
+      localStorage.setItem('ghost_token', urlToken);
+      // Fetch user info with the token
+      api.me().then((user) => {
+        localStorage.setItem('ghost_user', JSON.stringify(user));
+        useAuthStore.setState({ token: urlToken, user, isAuthenticated: true });
+      }).catch(() => {
+        // Token invalid, fall through to normal restore
+        localStorage.removeItem('ghost_token');
+      });
+      set({ token: urlToken, isAuthenticated: true, loading: true });
+      return;
+    }
+
     const token = localStorage.getItem('ghost_token');
     const userStr = localStorage.getItem('ghost_user');
     if (token && userStr) {

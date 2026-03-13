@@ -1,19 +1,26 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { isPlugin } from '../lib/hostContext';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, loading, error } = useAuthStore();
-  const navigate = useNavigate();
+  const [isRegister, setIsRegister] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const { login, register, loading, error } = useAuthStore();
+  const navigate = isPlugin ? undefined : useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await login(email, password);
-    if (useAuthStore.getState().isAuthenticated) navigate('/projects');
+    if (isRegister) {
+      await register(email, password, displayName);
+    } else {
+      await login(email, password);
+    }
+    if (useAuthStore.getState().isAuthenticated && navigate) navigate('/projects');
   };
 
   return (
@@ -23,10 +30,19 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">
             <span className="text-ghost-green">Ghost</span> Session
           </h1>
-          <p className="text-sm text-ghost-text-muted mt-1">Sign in to your account</p>
+          <p className="text-sm text-ghost-text-muted mt-1">{isRegister ? 'Create your account' : 'Sign in to your account'}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegister && (
+            <Input
+              label="Producer Name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your producer name"
+              required
+            />
+          )}
           <Input
             label="Email"
             type="email"
@@ -40,7 +56,7 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password"
+            placeholder={isRegister ? 'Min 8 characters' : 'Enter password'}
             required
           />
 
@@ -49,15 +65,21 @@ export default function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? (isRegister ? 'Creating...' : 'Signing in...') : (isRegister ? 'Create Account' : 'Sign In')}
           </Button>
         </form>
 
         <p className="text-center text-sm text-ghost-text-muted mt-6">
-          No account?{' '}
-          <Link to="/register" className="text-ghost-green hover:underline">
-            Register
-          </Link>
+          {isRegister ? 'Already have an account? ' : 'No account? '}
+          {isPlugin ? (
+            <button onClick={() => setIsRegister(!isRegister)} className="text-ghost-green hover:underline">
+              {isRegister ? 'Sign In' : 'Register'}
+            </button>
+          ) : (
+            <Link to={isRegister ? '/login' : '/register'} className="text-ghost-green hover:underline">
+              {isRegister ? 'Sign In' : 'Register'}
+            </Link>
+          )}
         </p>
       </div>
     </div>
