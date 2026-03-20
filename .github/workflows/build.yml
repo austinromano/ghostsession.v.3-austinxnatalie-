@@ -33,58 +33,45 @@ jobs:
 
       - name: Find build output
         run: |
-          echo "=== All .vst3 files ==="
-          find . -name "*.vst3" -type d 2>/dev/null
-          find . -name "*.vst3" -type f 2>/dev/null
-          echo "=== Artefacts dir ==="
-          ls -laR apps/plugin/build/GhostSession_artefacts/ 2>/dev/null || echo "No artefacts dir found"
-          echo "=== Any Ghost Session files ==="
-          find . -name "Ghost*" -not -path "*/Source/*" -not -path "*/.git/*" 2>/dev/null
+          echo "=== All .vst3 bundles ==="
+          find . -name "*.vst3" -not -path "*/.git/*" 2>/dev/null
+          echo "=== Artefacts ==="
+          ls -laR apps/plugin/build/GhostSession_artefacts/ 2>/dev/null || echo "No artefacts dir"
 
-      - name: Create macOS Installer DMG
+      - name: Create installer script
         run: |
           mkdir -p dmg-content
-
-          # Try multiple possible paths
-          VST3_PATH=$(find . -path "*/Ghost Session.vst3/Contents" -type d 2>/dev/null | head -1 | sed 's|/Contents||')
-          if [ -z "$VST3_PATH" ]; then
-            echo "ERROR: Ghost Session.vst3 not found!"
-            find . -name "*.vst3" 2>/dev/null
-            exit 1
-          fi
-          echo "Found VST3 at: $VST3_PATH"
-          cp -r "$VST3_PATH" dmg-content/
-
-          cat > dmg-content/Install.command << 'INSTALLSCRIPT'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-echo ""
-echo "  ╔═══════════════════════════════════════╗"
-echo "  ║     Ghost Session VST3 Installer      ║"
-echo "  ╚═══════════════════════════════════════╝"
-echo ""
-echo "  Installing Ghost Session VST3 plugin..."
-echo ""
-sudo mkdir -p "/Library/Audio/Plug-Ins/VST3"
-sudo cp -r "$SCRIPT_DIR/Ghost Session.vst3" "/Library/Audio/Plug-Ins/VST3/"
-echo "  ✓ Installed to /Library/Audio/Plug-Ins/VST3/"
-echo ""
-echo "  Open your DAW and scan for new plugins."
-echo "  Look for 'Ghost Session' by Ghost Audio."
-echo ""
-read -p "  Press Enter to close..."
-INSTALLSCRIPT
+          cat > dmg-content/Install.command << 'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          echo ""
+          echo "  Installing Ghost Session VST3 plugin..."
+          echo ""
+          sudo mkdir -p "/Library/Audio/Plug-Ins/VST3"
+          sudo cp -r "$DIR/Ghost Session.vst3" "/Library/Audio/Plug-Ins/VST3/"
+          echo "  Done! Open your DAW and scan for plugins."
+          echo ""
+          read -p "  Press Enter to close..."
+          EOF
           chmod +x dmg-content/Install.command
 
-          echo "=== DMG contents ==="
-          ls -laR dmg-content/
+      - name: Copy VST3 to DMG content
+        run: |
+          VST3=$(find . -path "*/Ghost Session.vst3/Contents" -type d 2>/dev/null | head -1 | sed 's|/Contents||')
+          if [ -z "$VST3" ]; then
+            echo "VST3 not found!"
+            exit 1
+          fi
+          echo "Found: $VST3"
+          cp -r "$VST3" dmg-content/
           du -sh dmg-content/*
 
+      - name: Create DMG
+        run: |
           hdiutil create -volname "Ghost Session" \
             -srcfolder dmg-content \
             -ov -format UDZO \
             "Ghost-Session-macOS.dmg"
-
           ls -la Ghost-Session-macOS.dmg
 
       - name: Upload DMG
@@ -106,14 +93,9 @@ INSTALLSCRIPT
 
             ### Install
             1. Open the DMG
-            2. Right-click `Install.command` → Open (first time only)
-            3. Enter your Mac password when prompted
-            4. Open Ableton/Logic and scan for plugins
-            5. Add **Ghost Session** to any track
+            2. Right-click Install.command → Open
+            3. Enter your Mac password
+            4. Open your DAW and scan for plugins
+            5. Add Ghost Session to any track
 
-            Or manually copy `Ghost Session.vst3` to `/Library/Audio/Plug-Ins/VST3/`
-
-            ### Requirements
-            - macOS 11+ (Big Sur or later)
-            - Apple Silicon Mac (M1/M2/M3/M4)
-            - Any VST3-compatible DAW
+            Or drag Ghost Session.vst3 to /Library/Audio/Plug-Ins/VST3/
