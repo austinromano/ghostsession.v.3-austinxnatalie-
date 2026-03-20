@@ -1,4 +1,4 @@
-name: Build Desktop App
+name: Build Ghost Session
 
 on:
   push:
@@ -7,80 +7,40 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-mac:
+  build-vst-mac:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          submodules: recursive
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - name: Install JUCE
+        run: |
+          git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git
 
-      - name: Install root dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Configure CMake
+        run: |
+          cd apps/plugin
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 
-      - name: Build packages
-        run: pnpm build:packages || true
+      - name: Build VST3 and AU
+        run: |
+          cd apps/plugin
+          cmake --build build --config Release --target GhostSession_VST3
+          cmake --build build --config Release --target GhostSession_AU || true
+          cmake --build build --config Release --target GhostSession_Standalone || true
 
-      - name: Build frontend
-        run: cd apps/desktop && npx vite build
+      - name: Package VST3
+        run: |
+          mkdir -p artifacts
+          cp -r apps/plugin/build/GhostSession_artefacts/Release/VST3/*.vst3 artifacts/ || true
+          cp -r apps/plugin/build/GhostSession_artefacts/Release/AU/*.component artifacts/ || true
+          cp -r apps/plugin/build/GhostSession_artefacts/Release/Standalone/*.app artifacts/ || true
+          ls -la artifacts/
 
-      - name: Install server production deps
-        run: cd apps/server && npm install --production --ignore-scripts
-
-      - name: Install Electron dependencies
-        run: cd apps/electron && npm install
-
-      - name: Build macOS DMG
-        run: cd apps/electron && npm run build:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload DMG
+      - name: Upload VST3 Plugin
         uses: actions/upload-artifact@v4
         with:
-          name: Ghost-Session-macOS
-          path: apps/electron/dist/*.dmg
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Install root dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Build packages
-        run: pnpm build:packages || true
-
-      - name: Build frontend
-        run: cd apps/desktop && npx vite build
-
-      - name: Install server production deps
-        run: cd apps/server && npm install --production --ignore-scripts
-
-      - name: Install Electron dependencies
-        run: cd apps/electron && npm install
-
-      - name: Build Windows installer
-        run: cd apps/electron && npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: Ghost-Session-Windows
-          path: apps/electron/dist/*.exe
+          name: Ghost-Session-VST3-macOS
+          path: artifacts/
