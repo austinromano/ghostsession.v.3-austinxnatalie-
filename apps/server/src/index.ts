@@ -37,6 +37,12 @@ app.post('/api/v1/debug', async (c) => {
   return c.json({ ok: true });
 });
 
+// Fix double /api/v1 prefix from cached frontend builds
+app.get('/api/v1/api/v1/auth/avatars/:fileName', async (c) => {
+  const fileName = c.req.param('fileName');
+  return c.redirect(`/api/v1/auth/avatars/${fileName}`, 301);
+});
+
 // API routes
 app.route('/api/v1/auth', auth);
 app.route('/api/v1/projects', projectRoutes);
