@@ -970,9 +970,14 @@ function FullMixDropZone({ projectId, onFilesAdded, isBeat }: { projectId: strin
               <div className="flex-1" />
               <button
                 onClick={handleBrowse}
-                className="px-3 py-1.5 text-[11px] font-medium bg-white/[0.04] border border-white/[0.08] rounded-lg text-white/40 hover:text-white/80 hover:bg-white/[0.08] hover:border-white/[0.12] transition-all shrink-0"
+                className="flex items-center justify-center gap-1.5 w-[110px] py-1.5 text-[13px] font-semibold bg-purple-500/15 border border-purple-500/25 rounded-lg text-purple-300 hover:bg-purple-500/25 hover:border-purple-500/35 hover:text-purple-200 transition-all shrink-0"
               >
-                + Add File
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                Upload
               </button>
             </>
           )}
@@ -1747,9 +1752,14 @@ function DropZone({ projectId, onFilesAdded }: { projectId: string; onFilesAdded
               <div className="flex-1" />
               <button
                 onClick={handleBrowse}
-                className="px-3 py-1.5 text-[11px] font-medium bg-white/[0.04] border border-white/[0.08] rounded-lg text-white/40 hover:text-white/80 hover:bg-white/[0.08] hover:border-white/[0.12] transition-all shrink-0"
+                className="flex items-center justify-center gap-1.5 w-[110px] py-1.5 text-[13px] font-semibold bg-purple-500/15 border border-purple-500/25 rounded-lg text-purple-300 hover:bg-purple-500/25 hover:border-purple-500/35 hover:text-purple-200 transition-all shrink-0"
               >
-                + Add File
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                Upload
               </button>
             </>
           )}
@@ -2681,26 +2691,29 @@ export default function PluginLayout() {
 
                   <button
                     onClick={() => { setShowVersionHistory(!showVersionHistory); if (!showVersionHistory && selectedProjectId) fetchVersions(selectedProjectId); }}
-                    className={`shrink-0 px-3 py-1.5 text-[12px] font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                    className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
                       showVersionHistory
                         ? 'bg-ghost-purple text-white'
                         : 'bg-white/5 border border-white/10 text-ghost-text-secondary hover:text-white hover:bg-white/10'
                     }`}
+                    title="Version History"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1 4 1 10 7 10" />
+                      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                     </svg>
-                    History
-                    {versions.length > 0 && (
-                      <span className="text-[9px] bg-white/15 px-1.5 py-0.5 rounded-full">{versions.length}</span>
-                    )}
                   </button>
 
                   <button
                     onClick={() => setShowInvite(!showInvite)}
-                    className="shrink-0 px-4 py-1.5 text-[12px] font-bold bg-ghost-green text-black rounded-lg hover:bg-ghost-green/90 transition-all hover:shadow-[0_0_20px_rgba(0,255,200,0.15)]"
+                    className="flex items-center justify-center gap-1.5 w-[110px] py-1.5 text-[13px] font-semibold bg-purple-500/15 border border-purple-500/25 rounded-lg text-purple-300 hover:bg-purple-500/25 hover:border-purple-500/35 hover:text-purple-200 transition-all shrink-0"
                   >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="8.5" cy="7" r="4" />
+                      <line x1="20" y1="8" x2="20" y2="14" />
+                      <line x1="23" y1="11" x2="17" y2="11" />
+                    </svg>
                     Invite
                   </button>
 
