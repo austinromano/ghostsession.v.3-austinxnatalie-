@@ -96,34 +96,31 @@ export const useAudioStore = create<AudioState>((set, get) => {
     rafId = requestAnimationFrame(updatePosition);
   }
 
+  let loopTimer: ReturnType<typeof setTimeout> | null = null;
+
   function startAllSources(offset: number) {
     const ctx = getCtx();
     const { loadedTracks } = get();
+
+    // Clear any pending loop restart
+    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
 
     loadedTracks.forEach((track) => {
       if (track.source) {
         try { track.source.stop(); } catch {}
       }
 
-      const tempoRate = getRate(track);
-      const pitchSemitones = track.pitch || 0;
-      // Compensate playbackRate so detune changes pitch without changing tempo
-      // effectiveRate = playbackRate * 2^(detune/1200)
-      // We want effectiveRate = tempoRate, so playbackRate = tempoRate / 2^(pitch/12)
-      const pitchFactor = Math.pow(2, pitchSemitones / 12);
       const source = ctx.createBufferSource();
       source.buffer = track.buffer;
-      source.playbackRate.value = tempoRate / pitchFactor;
-      source.detune.value = pitchSemitones * 100;
-      source.loop = true;
+      source.playbackRate.value = 1;
+      source.loop = false; // No individual looping — we loop all tracks together
 
       const gain = ctx.createGain();
       gain.gain.value = track.muted ? 0 : track.volume;
       source.connect(gain);
       gain.connect(getMaster());
 
-      // Convert "project time" offset into "track time" offset
-      const trackOffset = (offset * tempoRate) % track.buffer.duration;
+      const trackOffset = offset % track.buffer.duration;
       source.start(0, trackOffset);
 
       track.source = source;
@@ -132,9 +129,21 @@ export const useAudioStore = create<AudioState>((set, get) => {
 
     startedAt = ctx.currentTime - offset;
     updateSoloState();
+
+    // Schedule a synchronized loop restart when the longest track ends
+    const dur = get().duration;
+    if (dur > 0) {
+      const remaining = dur - (offset % dur);
+      loopTimer = setTimeout(() => {
+        if (get().isPlaying) {
+          startAllSources(0);
+        }
+      }, remaining * 1000);
+    }
   }
 
   function stopAllSources() {
+    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
     const { loadedTracks } = get();
     loadedTracks.forEach((track) => {
       if (track.source) {
