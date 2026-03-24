@@ -1651,8 +1651,8 @@ function detectBpmFromName(name: string): number {
 
 function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
   const { isPlaying, currentTime, duration, loadedTracks, projectBpm, play, pause, stop, seekTo, loadTrack, loadTrackFromBuffer, setProjectBpm } = useAudioStore();
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
+  const [loop, setLoop] = useState(false);
+  const [metronome, setMetronome] = useState(false);
   const [dragging, setDragging] = useState(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
   const loadedRef = useRef<Set<string>>(new Set());
@@ -1715,25 +1715,13 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
   return (
     <div className="shrink-0 h-[95px] bg-[#0A0412] rounded-xl border border-white/20 flex flex-col justify-center">
       {/* Controls row */}
-      <div className="flex items-center justify-center gap-5 py-1.5">
-        {/* Shuffle */}
-        <button
-          onClick={() => setShuffle(!shuffle)}
-          className={`w-7 h-7 flex items-center justify-center transition-colors ${shuffle ? 'text-ghost-green' : 'text-white/40 hover:text-white/70'}`}
-          title="Shuffle"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
-            <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
-            <line x1="4" y1="4" x2="9" y2="9" />
-          </svg>
-        </button>
-
-        {/* Previous */}
+      <div className="flex items-center justify-center py-1.5 relative">
+        <div className="flex items-center gap-4">
+        {/* Rewind to start */}
         <button
           onClick={() => seekTo(0)}
           className="w-7 h-7 flex items-center justify-center text-white/50 hover:text-white transition-colors"
-          title="Restart"
+          title="Rewind to start"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <rect x="3" y="5" width="3" height="14" rx="1" />
@@ -1741,10 +1729,21 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
           </svg>
         </button>
 
-        {/* Play/Pause — larger center button */}
+        {/* Stop */}
+        <button
+          onClick={stop}
+          className="w-7 h-7 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+          title="Stop"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <rect x="0" y="0" width="14" height="14" rx="2" />
+          </svg>
+        </button>
+
+        {/* Play/Pause */}
         <motion.button
           onClick={handlePlayPause}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+          className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${
             isPlaying
               ? 'text-black shadow-[0_0_16px_rgba(124,58,237,0.4)]'
               : 'text-black hover:shadow-[0_0_16px_rgba(124,58,237,0.3)]'
@@ -1763,23 +1762,11 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
           )}
         </motion.button>
 
-        {/* Next */}
+        {/* Loop */}
         <button
-          onClick={stop}
-          className="w-7 h-7 flex items-center justify-center text-white/50 hover:text-white transition-colors"
-          title="Stop"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="3,5 14,12 3,19" />
-            <rect x="18" y="5" width="3" height="14" rx="1" />
-          </svg>
-        </button>
-
-        {/* Repeat */}
-        <button
-          onClick={() => setRepeat(!repeat)}
-          className={`w-7 h-7 flex items-center justify-center transition-colors ${repeat ? 'text-ghost-green' : 'text-white/40 hover:text-white/70'}`}
-          title="Repeat"
+          onClick={() => setLoop(!loop)}
+          className={`w-7 h-7 flex items-center justify-center transition-colors ${loop ? 'text-ghost-green' : 'text-white/40 hover:text-white/70'}`}
+          title={loop ? 'Loop on' : 'Loop off'}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="17 1 21 5 17 9" />
@@ -1789,80 +1776,37 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
           </svg>
         </button>
 
-        {/* BPM controls */}
-        {projectBpm > 0 && (
-          <div className="flex items-center gap-1 ml-3 pl-3 border-l border-white/10">
-            <motion.button
-              onClick={() => {
-                const newBpm = Math.max(40, projectBpm - 1);
-                setProjectBpm(newBpm);
-                onTempoChange?.(newBpm);
-              }}
-              className="w-6 h-6 rounded-full bg-white/10 text-white/50 hover:bg-white/20 hover:text-white flex items-center justify-center transition-colors text-[14px] font-bold"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              title="Decrease BPM"
-            >
-              −
-            </motion.button>
-            <span className="text-[13px] font-mono font-bold text-white/70 w-10 text-center select-none">{projectBpm}</span>
-            <motion.button
-              onClick={() => {
-                const newBpm = Math.min(300, projectBpm + 1);
-                setProjectBpm(newBpm);
-                onTempoChange?.(newBpm);
-              }}
-              className="w-6 h-6 rounded-full bg-white/10 text-white/50 hover:bg-white/20 hover:text-white flex items-center justify-center transition-colors text-[14px] font-bold"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              title="Increase BPM"
-            >
-              +
-            </motion.button>
-            <span className="text-[9px] text-white/30 uppercase tracking-wider ml-0.5">BPM</span>
-          </div>
-        )}
-
-        {/* Track zoom controls */}
-        <div className="flex items-center gap-1 ml-3 pl-3 border-l border-white/10">
-          <button
-            onClick={() => onZoomChange?.('half')}
-            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${trackZoom === 'half' ? 'text-ghost-green bg-ghost-green/10' : 'text-white/40 hover:text-white/70'}`}
-            title="Compact view"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" />
-            </svg>
-          </button>
-          <button
-            onClick={() => onZoomChange?.('full')}
-            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${trackZoom === 'full' ? 'text-ghost-green bg-ghost-green/10' : 'text-white/40 hover:text-white/70'}`}
-            title="Full view"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
-            </svg>
-          </button>
+        {/* Metronome */}
+        <button
+          onClick={() => setMetronome(!metronome)}
+          className={`w-7 h-7 flex items-center justify-center transition-colors ${metronome ? 'text-ghost-green' : 'text-white/40 hover:text-white/70'}`}
+          title={metronome ? 'Metronome on' : 'Metronome off'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L8 22h8L12 2z" />
+            <line x1="12" y1="8" x2="18" y2="4" />
+          </svg>
+        </button>
         </div>
       </div>
 
       {/* Seek bar row */}
-      <div className="flex items-center gap-3 px-4 pb-1">
-        <span className="text-[11px] font-mono text-white/40 w-10 text-right">{formatTime(currentTime)}</span>
+      <div className="flex items-center gap-2 px-4 pb-1">
+        <span className="text-[11px] font-mono text-white/40 w-11 text-right shrink-0">{formatTime(currentTime)}</span>
         <div
           ref={seekBarRef}
-          className="flex-1 h-1 bg-white/10 rounded-full cursor-pointer group relative"
+          className="flex-1 h-1.5 bg-white/10 rounded-full cursor-pointer group relative"
           onClick={handleSeekClick}
           onMouseDown={() => setDragging(true)}
           onMouseMove={handleSeekDrag}
           onMouseUp={() => setDragging(false)}
           onMouseLeave={() => setDragging(false)}
         >
-          <div className="h-full bg-white/50 rounded-full relative transition-all" style={{ width: `${progress}%` }}>
+          <div className="h-full rounded-full relative" style={{ width: `${Math.min(progress, 100)}%`, background: 'linear-gradient(90deg, #7C3AED, #a855f7)' }}>
             <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white opacity-0 group-hover:opacity-100 transition-opacity shadow-md" />
           </div>
         </div>
-        <span className="text-[11px] font-mono text-white/40 w-10">{formatTime(duration)}</span>
+        <span className="text-[11px] font-mono text-white/40 w-11 shrink-0">{formatTime(duration)}</span>
       </div>
     </div>
   );
@@ -3443,8 +3387,29 @@ export default function PluginLayout() {
                 {/* Always one drop zone at top */}
                 <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} />
 
-                {/* Uploaded tracks + remaining empty slots */}
-                <div className="space-y-2 mt-2">
+                {/* Track zoom + track list */}
+                <div className="flex items-center justify-end gap-1.5 mt-2 mb-1">
+                  <span className="text-[10px] text-white/30 uppercase tracking-wider mr-1">Track Size</span>
+                  <button
+                    onClick={() => setTrackZoom('half')}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${trackZoom === 'half' ? 'text-ghost-green bg-ghost-green/10 border border-ghost-green/20' : 'text-white/40 hover:text-white/70 bg-white/[0.04] border border-white/10'}`}
+                    title="Compact tracks"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setTrackZoom('full')}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${trackZoom === 'full' ? 'text-ghost-green bg-ghost-green/10 border border-ghost-green/20' : 'text-white/40 hover:text-white/70 bg-white/[0.04] border border-white/10'}`}
+                    title="Full tracks"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-2">
                   {[...currentProject.tracks].reverse().map((track: any) => (
                     <StemRow
                       key={track.id}
@@ -3469,7 +3434,7 @@ export default function PluginLayout() {
               </div>
 
               {/* Right panel: chat */}
-              <div className="relative flex flex-col shrink-0 gap-2">
+              <div className="relative flex flex-col min-h-0 h-full gap-2 overflow-hidden">
                 <button
                   onClick={() => setChatCollapsed(!chatCollapsed)}
                   className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors"
@@ -3526,7 +3491,7 @@ export default function PluginLayout() {
                 onInvite={() => setShowInvite(true)}
               />
               {/* Right panel: chat */}
-              <div className="relative flex flex-col shrink-0 gap-2">
+              <div className="relative flex flex-col min-h-0 h-full gap-2 overflow-hidden">
                 <button
                   onClick={() => setChatCollapsed(!chatCollapsed)}
                   className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors"

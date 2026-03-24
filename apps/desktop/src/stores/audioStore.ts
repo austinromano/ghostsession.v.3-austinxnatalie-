@@ -70,11 +70,8 @@ function getMaster() {
 
 export const useAudioStore = create<AudioState>((set, get) => {
 
-  function getRate(track: LoadedTrack): number {
-    const { projectBpm } = get();
-    if (projectBpm > 0 && track.bpm > 0) {
-      return projectBpm / track.bpm;
-    }
+  function getRate(_track: LoadedTrack): number {
+    // Auto-warp disabled — play all tracks at original speed
     return 1;
   }
 

@@ -337,7 +337,7 @@ export default function ChatPanel() {
   const showMediaArea = videoOn || screenOn || screenShareStreams.size > 0 || cameraStreams.size > 0;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
 
       {/* Media area */}
       {showMediaArea && (
@@ -439,7 +439,7 @@ export default function ChatPanel() {
       </div>
 
       {/* Chat input — Discord style */}
-      <div className="px-3 pb-3 pt-1 relative">
+      <div className="px-3 pb-3 pt-1 relative shrink-0">
         {/* Emoji picker */}
         {showEmoji && (
           <div
