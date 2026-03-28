@@ -11,7 +11,9 @@ export function registerChatHandlers(io: Server, socket: GhostSocket) {
     const room = `project:${projectId}`;
     const timestamp = Date.now();
 
+    const messageId = crypto.randomUUID();
     const msg = {
+      id: messageId,
       userId: socket.data.userId,
       displayName: socket.data.displayName,
       colour: socket.data.colour,
@@ -19,14 +21,11 @@ export function registerChatHandlers(io: Server, socket: GhostSocket) {
       timestamp,
     };
 
-    // Broadcast to everyone in room including sender
-    io.to(room).emit('chat-message', msg);
-
-    // Persist to database and create notifications (fire and forget)
+    // Persist to database first, then broadcast
     (async () => {
       try {
         await db.insert(chatMessages).values({
-          id: crypto.randomUUID(),
+          id: messageId,
           projectId,
           userId: socket.data.userId,
           displayName: socket.data.displayName,
@@ -34,6 +33,9 @@ export function registerChatHandlers(io: Server, socket: GhostSocket) {
           text,
           createdAt: new Date(timestamp).toISOString(),
         }).run();
+
+        // Broadcast after successful persistence
+        io.to(room).emit('chat-message', msg);
 
         const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1).all();
         const projectName = project?.name || 'a project';
@@ -59,22 +61,29 @@ export function registerChatHandlers(io: Server, socket: GhostSocket) {
     })();
   });
 
-  socket.on('delete-chat-message', ({ projectId, timestamp }) => {
+  socket.on('delete-chat-message', ({ projectId, timestamp, messageId }: any) => {
     const room = `project:${projectId}`;
-    const ts = new Date(timestamp).toISOString();
 
-    // Delete from DB (fire and forget)
     (async () => {
       try {
-        await db.delete(chatMessages)
-          .where(and(eq(chatMessages.projectId, projectId), eq(chatMessages.userId, socket.data.userId), eq(chatMessages.createdAt, ts)))
-          .run();
+        if (messageId) {
+          // Preferred: delete by message ID (exact match)
+          await db.delete(chatMessages)
+            .where(and(eq(chatMessages.id, messageId), eq(chatMessages.userId, socket.data.userId)))
+            .run();
+        } else {
+          // Fallback: delete by timestamp (backwards compatibility)
+          const ts = new Date(timestamp).toISOString();
+          await db.delete(chatMessages)
+            .where(and(eq(chatMessages.projectId, projectId), eq(chatMessages.userId, socket.data.userId), eq(chatMessages.createdAt, ts)))
+            .run();
+        }
+
+        // Broadcast deletion after successful DB delete
+        io.to(room).emit('delete-chat-message', { timestamp, messageId });
       } catch (err) {
         console.error('Failed to delete chat message:', err);
       }
     })();
-
-    // Broadcast deletion to all clients in room
-    io.to(room).emit('delete-chat-message', { timestamp });
   });
 }

@@ -4,7 +4,9 @@ import type {
   Project, ProjectDetail, Track, Version, Comment, User,
 } from '@ghost/types';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+import { API_BASE } from './constants';
+
+const BASE_URL = API_BASE;
 
 let authToken: string | null = null;
 

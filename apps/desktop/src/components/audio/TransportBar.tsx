@@ -1,0 +1,148 @@
+import { useState, useRef, useEffect } from 'react';
+import { useAudioStore } from '../../stores/audioStore';
+import { useProjectStore } from '../../stores/projectStore';
+import { audioBufferCache, rawDataCache, detectBpmFromName, formatTime } from '../../lib/audio';
+import FrequencyBar from './FrequencyBar';
+
+export default function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
+  const { isPlaying, currentTime, duration, loadedTracks, projectBpm, canUndo, canRedo, play, pause, stop, seekTo, loadTrack, loadTrackFromBuffer, setProjectBpm } = useAudioStore();
+  const currentProject = useProjectStore((s) => s.currentProject);
+  const [loop, setLoop] = useState(false);
+  const [metronome, setMetronome] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const seekBarRef = useRef<HTMLDivElement>(null);
+  const loadedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (projectTempo && projectTempo > 0) {
+      setProjectBpm(projectTempo);
+    }
+  }, [projectTempo, setProjectBpm]);
+
+  useEffect(() => {
+    if (!tracks || !projectId) return;
+    const tryLoad = () => {
+      for (const track of tracks) {
+        if (!track.fileId || loadedRef.current.has(track.id)) continue;
+        if (audioBufferCache.has(track.fileId)) {
+          loadedRef.current.add(track.id);
+          const trackName = track.name || track.fileName || '';
+          const detectedBpm = detectBpmFromName(trackName);
+          const buffer = audioBufferCache.get(track.fileId)!;
+          loadTrackFromBuffer(track.id, buffer, detectedBpm);
+        }
+      }
+    };
+    tryLoad();
+    const interval = setInterval(tryLoad, 500);
+    return () => clearInterval(interval);
+  }, [tracks, projectId, loadTrack]);
+
+  useEffect(() => {
+    loadedRef.current.clear();
+  }, [projectId]);
+
+  const hasTracksLoaded = loadedTracks.size > 0;
+
+  const handlePlayPause = () => {
+    if (isPlaying) pause();
+    else play();
+  };
+
+  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    seekTo(ratio * duration);
+  };
+
+  const handleSeekDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragging || duration <= 0 || !seekBarRef.current) return;
+    const rect = seekBarRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    seekTo(ratio * duration);
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="shrink-0 flex flex-col w-full" style={{ background: 'rgba(10,4,18,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="h-6 w-full flex items-stretch overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        {Array.from({ length: 16 }, (_, bar) => (
+          <div key={bar} className="flex-1 flex items-start relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.12)' }}>
+            <span className="text-[10px] font-mono text-white/30 ml-1 mt-0.5 select-none">{bar + 1}</span>
+            <div className="absolute bottom-0 left-1/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            <div className="absolute bottom-0 left-1/2 w-px h-3" style={{ background: 'rgba(255,255,255,0.08)' }} />
+            <div className="absolute bottom-0 left-3/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          </div>
+        ))}
+      </div>
+      <FrequencyBar
+        seekBarRef={seekBarRef}
+        progress={progress}
+        isPlaying={isPlaying}
+        onSeekClick={handleSeekClick}
+        onSeekDrag={handleSeekDrag}
+        onSeekEnd={() => setDragging(false)}
+      >
+        <div className="absolute inset-0 flex items-center z-10 pointer-events-none">
+          <div className="absolute left-3 flex items-center gap-1 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <button onClick={() => {
+              const state = useAudioStore.getState();
+              if (!state.canUndo) return;
+              state.undo();
+              state.loadedTracks.forEach((t, id) => {
+                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
+                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+              });
+            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canUndo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Undo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+            </button>
+            <button onClick={() => {
+              const state = useAudioStore.getState();
+              if (!state.canRedo) return;
+              state.redo();
+              state.loadedTracks.forEach((t, id) => {
+                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
+                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+              });
+            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canRedo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>
+            </button>
+            <span className="text-[10px] font-mono text-white/70 ml-1">{formatTime(currentTime)}</span>
+          </div>
+
+          <div className="absolute flex items-center gap-3 pointer-events-auto" style={{ left: '50%', transform: 'translateX(-50%)', filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))' }}>
+            <button onClick={() => seekTo(0)} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Skip Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
+            </button>
+            <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Rewind">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
+            </button>
+            <button onClick={handlePlayPause} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all relative z-[5] ${isPlaying ? 'text-white' : 'text-white hover:text-white'}`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 30px rgba(147,51,234,0.5), 0 0 60px rgba(124,58,237,0.2)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
+              {isPlaying ? (
+                <svg width="16" height="16" viewBox="0 0 12 14" fill="white"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
+              )}
+            </button>
+            <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Fast Forward">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
+            </button>
+          </div>
+
+          <div className="absolute right-3 flex items-center gap-2 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <span className="text-[11px] font-mono text-white/70">{formatTime(currentTime)} / {formatTime(duration)}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+            <button onClick={() => onZoomChange?.('half')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'half' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Compact">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
+            </button>
+            <button onClick={() => onZoomChange?.('full')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'full' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Full">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
+            </button>
+          </div>
+        </div>
+      </FrequencyBar>
+    </div>
+  );
+}

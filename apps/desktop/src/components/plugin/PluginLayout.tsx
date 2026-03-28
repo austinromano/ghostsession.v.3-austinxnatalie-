@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, Reorder } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { api } from '../../lib/api';
@@ -8,2003 +8,28 @@ import { onGlobalOnlineUsers, type OnlineUser } from '../../lib/socket';
 import Avatar from '../common/Avatar';
 import ChatPanel from '../session/ChatPanel';
 import { useSessionStore } from '../../stores/sessionStore';
-import { useAudioStore, getAnalyser } from '../../stores/audioStore';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const SERVER_BASE = API_BASE.replace('/api/v1', '');
-
-interface Invitation {
-  id: string;
-  projectName: string;
-  inviterName: string;
-}
-
-interface SamplePack {
-  id: string;
-  name: string;
-  samples: { id: string; name: string; fileId?: string }[];
-  updatedAt?: string;
-}
-
-function ProjectListSidebar({
-  projects,
-  allProjects,
-  selectedId,
-  onSelect,
-  onCreate,
-  onCreateBeat,
-  samplePacks,
-  selectedPackId,
-  onSelectPack,
-  onCreatePack,
-  friends,
-}: {
-  projects: { id: string; name: string }[];
-  allProjects: any[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onCreate: () => void;
-  onCreateBeat: () => void;
-  samplePacks: SamplePack[];
-  selectedPackId: string | null;
-  onSelectPack: (id: string) => void;
-  onCreatePack: () => void;
-  friends: { id: string; displayName: string; avatarUrl: string | null }[];
-}) {
-  const [favoritesOpen, setFavoritesOpen] = useState(true);
-  const [projectsOpen, setProjectsOpen] = useState(true);
-  const [packsOpen, setPacksOpen] = useState(true);
-  const [beatsOpen, setBeatsOpen] = useState(true);
-  const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('ghost_sidebar_order');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return ['collabs', 'projects', 'favorites', 'samples'];
-  });
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('ghost_favorites') || '[]')); } catch { return new Set(); }
-  });
-  const toggleFavorite = (id: string) => {
-    setFavoriteIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      localStorage.setItem('ghost_favorites', JSON.stringify([...next]));
-      return next;
-    });
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-
-      <Reorder.Group axis="y" values={sectionOrder} onReorder={(newOrder) => { setSectionOrder(newOrder); localStorage.setItem('ghost_sidebar_order', JSON.stringify(newOrder)); }} className="flex-1 overflow-y-auto min-h-0" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {sectionOrder.map((sectionKey) => {
-          if (sectionKey === 'collabs') return (
-        <Reorder.Item key="collabs" value="collabs" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-        <div>
-          <button
-            onClick={() => setProjectsOpen((v) => !v)}
-            className="h-9 px-3 mx-2 mt-1.5 w-[calc(100%-16px)] flex items-center justify-between rounded-lg glass-subtle hover:bg-white/[0.08] transition-colors cursor-grab active:cursor-grabbing"
-          >
-            <span className="flex items-center gap-1.5 flex-1">
-              <span className="text-[13px] font-bold text-white/80 uppercase tracking-[0.08em]">
-                Collabs
-              </span>
-            </span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={`text-ghost-text-muted transition-transform ${projectsOpen ? 'rotate-90' : ''}`}>
-              <polygon points="2,0 8,5 2,10" />
-            </svg>
-          </button>
-          {projectsOpen && (
-            <div className="px-2 pb-1.5 space-y-0.5">
-              <button onClick={onCreate} className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] text-purple-400 hover:text-purple-300 hover:bg-white/[0.04] rounded-md transition-colors">
-                <span className="text-[15px]">+</span> New Collabs
-              </button>
-              {projects.map((p) => (
-                <div
-                  key={p.id}
-                  className={`group flex items-center w-full px-2 py-1.5 text-[13px] rounded-md transition-colors cursor-pointer ${
-                    selectedId === p.id && !selectedPackId
-                      ? 'bg-white/[0.08] text-white font-medium'
-                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
-                  }`}
-                  onClick={() => onSelect(p.id)}
-                >
-                  <span className="flex items-center gap-2 flex-1 min-w-0">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-text-muted shrink-0">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <span className="truncate">{p.name}</span>
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(p.id); }}
-                    className="text-yellow-400 transition-colors hover:text-yellow-300 shrink-0 ml-2"
-                    title={favoriteIds.has(p.id) ? 'Remove from favorites' : 'Add to favorites'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill={favoriteIds.has(p.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </Reorder.Item>
-          );
-          if (sectionKey === 'projects') return (
-        <Reorder.Item key="projects" value="projects" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-        {/* My Beats dropdown */}
-        <div>
-          <div className="h-9 px-3 mx-2 mt-1.5 w-[calc(100%-16px)] flex items-center justify-between rounded-lg glass-subtle hover:bg-white/[0.08] transition-colors cursor-grab active:cursor-grabbing">
-            <button
-              onClick={() => setBeatsOpen((v) => !v)}
-              className="flex items-center justify-between flex-1"
-            >
-              <span className="text-[13px] font-bold text-white/80 uppercase tracking-[0.08em]">
-                Projects
-              </span>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={`text-ghost-text-muted transition-transform ${beatsOpen ? 'rotate-90' : ''}`}>
-                <polygon points="2,0 8,5 2,10" />
-              </svg>
-            </button>
-          </div>
-          {beatsOpen && (
-            <div className="px-2 pb-1.5 space-y-0.5">
-              <button onClick={onCreateBeat} className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] text-purple-400 hover:text-purple-300 hover:bg-white/[0.04] rounded-md transition-colors">
-                <span className="text-[15px]">+</span> New Projects
-              </button>
-              {allProjects.filter((p: any) => p.projectType === 'beat').map((p: any) => (
-                <div
-                  key={p.id}
-                  onClick={() => { onSelect(p.id); }}
-                  className={`flex items-center w-full px-2 py-1.5 text-[13px] rounded-md transition-colors cursor-pointer ${
-                    selectedId === p.id && !selectedPackId
-                      ? 'bg-white/[0.08] text-white font-medium'
-                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 flex-1 min-w-0">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-green shrink-0">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    <span className="truncate">{p.name}</span>
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(p.id); }}
-                    className="text-yellow-400 transition-colors hover:text-yellow-300 shrink-0 ml-2"
-                    title={favoriteIds.has(p.id) ? 'Remove from favorites' : 'Add to favorites'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill={favoriteIds.has(p.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              {allProjects.filter((p: any) => p.projectType === 'beat').length === 0 && (
-                <p className="px-2 py-1.5 text-[13px] text-ghost-text-muted italic">No beats yet</p>
-              )}
-            </div>
-          )}
-        </div>
-        </Reorder.Item>
-          );
-          if (sectionKey === 'favorites') return (
-        <Reorder.Item key="favorites" value="favorites" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-        {/* Favorites dropdown */}
-        <div>
-          <button
-            onClick={() => setFavoritesOpen((v) => !v)}
-            className="h-9 px-3 mx-2 mt-1.5 w-[calc(100%-16px)] flex items-center justify-between rounded-lg glass-subtle hover:bg-white/[0.08] transition-colors cursor-grab active:cursor-grabbing"
-          >
-            <span className="flex items-center gap-1.5 flex-1">
-              <span className="text-[13px] font-bold text-white/80 uppercase tracking-[0.08em]">
-                Favorites
-              </span>
-            </span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={`text-ghost-text-muted transition-transform ${favoritesOpen ? 'rotate-90' : ''}`}>
-              <polygon points="2,0 8,5 2,10" />
-            </svg>
-          </button>
-          {favoritesOpen && (
-            <div className="px-2 pb-1.5 space-y-0.5">
-              {allProjects.filter((p: any) => favoriteIds.has(p.id)).map((p: any) => (
-                <button
-                  key={p.id}
-                  onClick={() => onSelect(p.id)}
-                  className={`w-full text-left px-2 py-1.5 text-[13px] rounded-md transition-colors ${
-                    selectedId === p.id && !selectedPackId
-                      ? 'bg-white/[0.08] text-white font-medium'
-                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-green shrink-0">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    {p.name}
-                  </span>
-                </button>
-              ))}
-              {samplePacks.filter((sp) => favoriteIds.has(sp.id)).map((sp) => (
-                <button
-                  key={sp.id}
-                  onClick={() => onSelectPack(sp.id)}
-                  className={`w-full text-left px-2 py-1.5 text-[13px] rounded-md transition-colors ${
-                    selectedPackId === sp.id
-                      ? 'bg-white/[0.08] text-white font-medium'
-                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ghost-purple">
-                      <path d="M9 18V5l12-2v13" />
-                      <circle cx="6" cy="18" r="3" />
-                      <circle cx="18" cy="16" r="3" />
-                    </svg>
-                    {sp.name}
-                  </span>
-                </button>
-              ))}
-              {projects.filter((p) => favoriteIds.has(p.id)).length === 0 && samplePacks.filter((sp) => favoriteIds.has(sp.id)).length === 0 && (
-                <p className="px-2 py-1.5 text-[13px] text-ghost-text-muted italic">No favorites yet</p>
-              )}
-            </div>
-          )}
-        </div>
-        </Reorder.Item>
-          );
-          if (sectionKey === 'samples') return (
-        <Reorder.Item key="samples" value="samples" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-        {/* Sample Packs dropdown */}
-        <div>
-          <button
-            onClick={() => setPacksOpen((v) => !v)}
-            className="h-9 px-3 mx-2 mt-1.5 w-[calc(100%-16px)] flex items-center justify-between rounded-lg glass-subtle hover:bg-white/[0.08] transition-colors cursor-grab active:cursor-grabbing"
-          >
-            <span className="text-[13px] font-bold text-white/80 uppercase tracking-[0.08em]">
-              My Samples
-            </span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={`text-ghost-text-muted transition-transform ${packsOpen ? 'rotate-90' : ''}`}>
-              <polygon points="2,0 8,5 2,10" />
-            </svg>
-          </button>
-          {packsOpen && (
-            <div className="px-2 pb-1.5 space-y-0.5">
-              <button onClick={onCreatePack} className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] text-purple-400 hover:text-purple-300 hover:bg-white/[0.04] rounded-md transition-colors">
-                <span className="text-[15px]">+</span> New Samples
-              </button>
-              {samplePacks.length === 0 && (
-                <p className="text-[11px] text-ghost-text-muted italic px-2 py-1">No packs yet</p>
-              )}
-              {samplePacks.map((sp) => (
-                <div
-                  key={sp.id}
-                  onClick={() => onSelectPack(sp.id)}
-                  className={`group flex items-center w-full px-2 py-1.5 text-[13px] rounded-md transition-colors cursor-pointer ${
-                    selectedPackId === sp.id
-                      ? 'bg-white/[0.08] text-white font-medium'
-                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 flex-1 min-w-0">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ghost-purple">
-                      <path d="M9 18V5l12-2v13" />
-                      <circle cx="6" cy="18" r="3" />
-                      <circle cx="18" cy="16" r="3" />
-                    </svg>
-                    <span className="truncate">{sp.name}</span>
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(sp.id); }}
-                    className="text-yellow-400 transition-colors hover:text-yellow-300 shrink-0 ml-2"
-                    title={favoriteIds.has(sp.id) ? 'Remove from favorites' : 'Add to favorites'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill={favoriteIds.has(sp.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </Reorder.Item>
-          );
-          return null;
-        })}
-
-        {/* Friends */}
-      </Reorder.Group>
-    </div>
-  );
-}
-
-function FriendsPanel({ friends }: { friends: { id: string; displayName: string; avatarUrl: string | null }[] }) {
-  const [open, setOpen] = useState(true);
-  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    onGlobalOnlineUsers((users) => {
-      setOnlineIds(new Set(users.map(u => u.userId)));
-    });
-  }, []);
-
-  const onlineFriends = friends.filter(f => onlineIds.has(f.id));
-  const offlineFriends = friends.filter(f => !onlineIds.has(f.id));
-
-  return (
-    <div className="shrink-0">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="h-9 px-3 mx-2 mt-1.5 w-[calc(100%-16px)] flex items-center justify-between rounded-lg glass-subtle hover:bg-white/[0.08] transition-colors cursor-grab active:cursor-grabbing"
-      >
-        <span className="flex items-center gap-1.5 flex-1">
-          <span className="text-[13px] font-bold text-white/80 uppercase tracking-[0.08em]">
-            My Friends
-          </span>
-          {onlineFriends.length > 0 && (
-            <span className="text-[10px] font-bold text-ghost-green bg-ghost-green/15 px-1.5 py-0.5 rounded-full">{onlineFriends.length} online</span>
-          )}
-        </span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className={`text-ghost-text-muted transition-transform ${open ? 'rotate-90' : ''}`}>
-          <polygon points="2,0 8,5 2,10" />
-        </svg>
-      </button>
-      {open && (
-        <div className="px-2 pb-1.5 space-y-px">
-          {friends.length === 0 ? null : (
-            <>
-              {onlineFriends.map((f) => (
-                <div key={f.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-ghost-surface-hover cursor-pointer group transition-colors">
-                  <div className="relative">
-                    <Avatar name={f.displayName} src={f.avatarUrl} size="sm" />
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#23A559] border-[2.5px] border-ghost-surface" />
-                  </div>
-                  <span className="text-[13px] font-medium text-ghost-text-secondary group-hover:text-white flex-1 truncate transition-colors">{f.displayName}</span>
-                </div>
-              ))}
-              {offlineFriends.map((f) => (
-                <div key={f.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-ghost-surface-hover cursor-pointer group transition-colors">
-                  <div className="relative">
-                    <Avatar name={f.displayName} src={f.avatarUrl} size="sm" />
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-ghost-text-muted/40 border-2 border-ghost-surface" />
-                  </div>
-                  <span className="text-[13px] font-medium text-ghost-text-muted/50 group-hover:text-ghost-text-primary flex-1 truncate transition-colors">{f.displayName}</span>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CollaboratorPanel({ members, onInvite, isOwner, onRemove }: {
-  members: { userId: string; displayName: string; role: string; avatarUrl?: string | null }[];
-  onInvite: () => void;
-  isOwner: boolean;
-  onRemove: (userId: string, name: string) => void;
-}) {
-  return (
-    <div className="mt-1">
-      <div className="px-3 py-1.5 flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-ghost-text-secondary uppercase tracking-wide">
-          Collaborators
-        </span>
-        <button
-          onClick={onInvite}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-ghost-text-muted hover:text-ghost-text-primary transition-colors"
-        >
-          + Invite
-        </button>
-      </div>
-      <div className="px-2 space-y-0.5">
-        {[...members].sort((a, b) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m) => (
-          <div key={m.userId} className="group flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-ghost-surface-hover/50 cursor-pointer">
-            <div className="relative">
-              <Avatar name={m.displayName} src={m.avatarUrl} size="sm" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-ghost-online-green border-2 border-ghost-sidebar" />
-            </div>
-            <span className="text-[14px] text-ghost-text-muted flex-1 truncate hover:text-ghost-text-secondary">{m.displayName}</span>
-            {m.role === 'owner' ? (
-              <span className="text-[10px] font-semibold text-ghost-host-gold bg-ghost-host-gold/15 px-1.5 py-0.5 rounded">HOST</span>
-            ) : isOwner ? (
-              <button
-                onClick={() => onRemove(m.userId, m.displayName)}
-                className="opacity-0 group-hover:opacity-100 text-ghost-text-muted hover:text-ghost-error-red transition-all"
-                title={`Remove ${m.displayName}`}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SettingsPopup({ user, onSignOut, onDeleteAccount, onClose, onProfile }: { user: any; onSignOut: () => void; onDeleteAccount: () => void; onClose: () => void; onProfile?: () => void }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    setUploading(true);
-    try {
-      const { avatarUrl } = await api.uploadAvatar(file);
-      const updated = { ...user, avatarUrl };
-      useAuthStore.setState({ user: updated });
-      localStorage.setItem('ghost_user', JSON.stringify(updated));
-    } catch {}
-    setUploading(false);
-  };
-
-  return (
-    <div className="absolute right-2 top-12 w-56 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 p-2 border border-white/5">
-      <div className="p-2 mb-1">
-        <div className="flex items-center gap-2.5">
-          <div className="relative cursor-pointer group" onClick={handleAvatarClick}>
-            <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="lg" />
-            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              {uploading ? (
-                <span className="text-[9px] text-white font-bold">...</span>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-              )}
-            </div>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-ghost-text-primary">{user?.displayName || 'Unknown'}</p>
-            <p className="text-[12px] text-ghost-text-muted">{user?.email || ''}</p>
-          </div>
-        </div>
-      </div>
-      <div className="h-px bg-white/5 mx-1 mb-1" />
-      <button
-        onClick={() => { onClose(); if (onProfile) onProfile(); }}
-        className="w-full px-2 py-1.5 text-[13px] text-left rounded text-ghost-text-secondary hover:bg-ghost-surface-hover hover:text-white transition-colors"
-      >
-        My Profile
-      </button>
-      <button
-        onClick={onSignOut}
-        className="w-full px-2 py-1.5 text-[13px] text-left rounded text-ghost-text-secondary hover:bg-ghost-error-red hover:text-white transition-colors"
-      >
-        Sign Out
-      </button>
-      <div className="h-px bg-white/5 mx-1 my-1" />
-      {!confirmDelete ? (
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="w-full px-2 py-1.5 text-[13px] text-left rounded text-red-400 hover:bg-red-500/20 transition-colors"
-        >
-          Delete Account
-        </button>
-      ) : (
-        <div className="p-2 space-y-2">
-          <p className="text-[12px] text-red-400">Are you sure? This is permanent.</p>
-          <div className="flex gap-2">
-            <button onClick={onDeleteAccount} className="flex-1 px-2 py-1 text-[12px] rounded bg-red-500 text-white hover:bg-red-600 transition-colors">Yes, Delete</button>
-            <button onClick={() => setConfirmDelete(false)} className="flex-1 px-2 py-1 text-[12px] rounded bg-white/10 text-ghost-text-secondary hover:bg-white/15 transition-colors">Cancel</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface Notification {
-  id: string;
-  type: string;
-  message: string;
-  createdAt: string;
-}
-
-function NotificationPopup({ invitations, onAccept, onDecline, notifications, onMarkRead }: {
-  invitations: Invitation[];
-  onAccept: (id: string) => void;
-  onDecline: (id: string) => void;
-  notifications: Notification[];
-  onMarkRead: () => void;
-}) {
-  return (
-    <div className="absolute right-14 top-12 w-80 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 border border-white/5 max-h-80 overflow-y-auto">
-      {/* Invitations section */}
-      {invitations.length > 0 && (
-        <>
-          <div className="p-3 pb-1">
-            <span className="text-[12px] font-semibold text-ghost-text-secondary uppercase tracking-wide">Invitations</span>
-          </div>
-          <div>
-            {invitations.map((inv) => (
-              <div key={inv.id} className="p-3 border-b border-ghost-border/50">
-                <p className="text-xs font-bold text-ghost-green">{inv.inviterName}</p>
-                <p className="text-[10px] text-ghost-text-muted mt-0.5">invited you to <span className="text-ghost-text-secondary">{inv.projectName}</span></p>
-                <div className="flex gap-1.5 mt-2">
-                  <button onClick={() => onAccept(inv.id)} className="px-3 py-1 text-[10px] font-semibold bg-ghost-green/10 text-ghost-green border border-ghost-green/30 rounded hover:bg-ghost-green/20">Accept</button>
-                  <button onClick={() => onDecline(inv.id)} className="px-2 py-1 text-[10px] font-semibold text-ghost-text-muted hover:text-ghost-error-red">X</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Notifications section */}
-      {notifications.length > 0 && (
-        <>
-          <div className="p-3 pb-1 flex items-center justify-between">
-            <span className="text-[12px] font-semibold text-ghost-text-secondary uppercase tracking-wide">Messages</span>
-            <button onClick={onMarkRead} className="text-[11px] text-ghost-purple hover:text-ghost-purple/80 font-medium">Mark all read</button>
-          </div>
-          <div>
-            {notifications.map((n) => (
-              <div key={n.id} className="px-3 py-2 border-b border-ghost-border/50 flex gap-2 items-start">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5865F2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] text-ghost-text-secondary leading-snug">{n.message}</p>
-                  <p className="text-[10px] text-ghost-text-muted mt-0.5">
-                    {new Date(n.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {invitations.length === 0 && notifications.length === 0 && (
-        <div className="p-4 text-center text-[13px] text-ghost-text-muted italic">No new notifications</div>
-      )}
-    </div>
-  );
-}
-
-function BellIcon({ count }: { count: number }) {
-  return (
-    <div className="relative">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-      </svg>
-      {count > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-          {count}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function InviteModal({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId: string }) {
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
-  const [suggestions, setSuggestions] = useState<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>([]);
-  const [allUsers, setAllUsers] = useState<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>([]);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      api.listUsers().then(setAllUsers).catch(() => {});
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!query.trim()) { setSuggestions([]); return; }
-    const q = query.toLowerCase();
-    const matches = allUsers.filter(
-      (u) => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-    );
-    setSuggestions(matches.slice(0, 5));
-  }, [query, allUsers]);
-
-  if (!open) return null;
-
-  const handleInvite = async (emailOrName: string) => {
-    if (!emailOrName.trim()) return;
-    try {
-      const isEmail = emailOrName.includes('@');
-      if (isEmail) {
-        await api.inviteMember(projectId, emailOrName.trim());
-      } else {
-        await api.inviteMember(projectId, '', emailOrName.trim());
-      }
-      setStatus('Invited!');
-      setQuery('');
-      setSuggestions([]);
-      setTimeout(() => { setStatus(''); onClose(); }, 1000);
-    } catch (err: any) {
-      setStatus(err.message || 'Invite failed');
-    }
-  };
-
-  return (
-    <div className="absolute right-2 top-12 w-72 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 p-4 border border-white/5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[12px] font-semibold text-ghost-text-secondary uppercase tracking-wide">Invite Collaborator</span>
-        <button onClick={onClose} className="text-ghost-text-muted hover:text-ghost-text-primary text-sm">X</button>
-      </div>
-      <div className="relative">
-        <input
-          className="ghost-input w-full text-sm mb-0"
-          placeholder="Search by name or email..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleInvite(query)}
-          autoFocus
-        />
-        {suggestions.length > 0 && (
-          <div ref={suggestionsRef} className="mt-1 bg-[#0a0a12] rounded-lg border border-white/5 overflow-hidden">
-            {suggestions.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => handleInvite(u.email)}
-                className="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-ghost-surface-hover transition-colors text-left"
-              >
-                <div className="w-7 h-7 rounded-full bg-ghost-green text-black flex items-center justify-center text-[11px] font-bold shrink-0">
-                  {u.displayName?.charAt(0)?.toUpperCase() || '?'}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-white truncate">{u.displayName}</p>
-                  <p className="text-[12px] text-ghost-text-muted truncate">{u.email}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      {suggestions.length === 0 && query.trim() && (
-        <button onClick={() => handleInvite(query)} className="w-full mt-2 px-3 py-2 text-[13px] font-medium bg-ghost-purple text-white rounded hover:bg-[#4752C4] transition-colors">
-          Send Invite
-        </button>
-      )}
-      {status && <p className={`text-xs mt-2 ${status === 'Invited!' ? 'text-ghost-green' : 'text-ghost-error-red'}`}>{status}</p>}
-    </div>
-  );
-}
-
-// Stores raw audio channel data for pixel-accurate rendering
-const rawDataCache = new Map<string, Float32Array>();
-// Stores decoded AudioBuffers for playback
-const audioBufferCache = new Map<string, AudioBuffer>();
-// Stores in-flight download promises to avoid duplicate fetches
-const downloadPromises = new Map<string, Promise<ArrayBuffer>>();
-
-function debugLog(msg: string) {
-  fetch(`${API_BASE}/debug`, { method: 'POST', body: msg }).catch(() => {});
-}
-
-function getAudioData(projectId: string, fileId: string): Promise<{ buffer: AudioBuffer; channelData: Float32Array }> {
-  debugLog('getAudioData called: ' + fileId);
-
-  if (audioBufferCache.has(fileId)) {
-    debugLog('cache hit: ' + fileId);
-    const buffer = audioBufferCache.get(fileId)!;
-    const channelData = rawDataCache.get(fileId) || buffer.getChannelData(0);
-    return Promise.resolve({ buffer, channelData });
-  }
-
-  let downloadPromise = downloadPromises.get(fileId);
-  if (!downloadPromise) {
-    debugLog('starting download: ' + fileId);
-    downloadPromise = api.downloadFile(projectId, fileId);
-    downloadPromises.set(fileId, downloadPromise);
-  } else {
-    debugLog('reusing download: ' + fileId);
-  }
-
-  return downloadPromise.then((buf) => {
-    debugLog('download done: ' + fileId + ' size=' + buf.byteLength);
-    if (audioBufferCache.has(fileId)) {
-      debugLog('another caller already decoded: ' + fileId);
-      const buffer = audioBufferCache.get(fileId)!;
-      return { buffer, channelData: rawDataCache.get(fileId) || buffer.getChannelData(0) };
-    }
-    debugLog('decoding: ' + fileId);
-    const ctx = new AudioContext();
-    return ctx.decodeAudioData(buf.slice(0)).then((decoded) => {
-      ctx.close();
-      debugLog('decode SUCCESS: ' + fileId + ' duration=' + decoded.duration);
-      audioBufferCache.set(fileId, decoded);
-      const channelData = decoded.getChannelData(0);
-      rawDataCache.set(fileId, channelData);
-      downloadPromises.delete(fileId);
-      return { buffer: decoded, channelData };
-    }).catch((err) => {
-      ctx.close();
-      debugLog('decode FAILED: ' + fileId + ' err=' + err.message);
-      throw err;
-    });
-  }).catch((err) => {
-    debugLog('getAudioData FAILED: ' + fileId + ' err=' + err.message);
-    throw err;
-  });
-}
-
-function Waveform({
-  seed, height = 60, fileId, projectId, showPlayhead = false, trackId,
-}: {
-  seed: string; height?: number; fileId?: string | null; projectId?: string; showPlayhead?: boolean; trackId?: string;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [rawData, setRawData] = useState<Float32Array | null>(
-    fileId ? rawDataCache.get(fileId) || null : null
-  );
-
-  const [loadFailed, setLoadFailed] = useState(false);
-
-  // Load raw audio data
-  useEffect(() => {
-    if (!fileId || !projectId) return;
-    if (rawDataCache.has(fileId)) { setRawData(rawDataCache.get(fileId)!); return; }
-
-    let cancelled = false;
-
-    getAudioData(projectId, fileId)
-      .then(({ channelData }) => {
-        if (!cancelled) setRawData(channelData);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
-      });
-
-    return () => { cancelled = true; };
-  }, [fileId, projectId]);
-
-  // Generate fake audio-like data from seed (also used as fallback when load fails)
-  const fakeData = useMemo(() => {
-    if (rawData) return null;
-    if (fileId && projectId && !loadFailed) return null;
-    let h = 0;
-    for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-    const len = 44100 * 4;
-    const data = new Float32Array(len);
-    let env = 0;
-    for (let i = 0; i < len; i++) {
-      h = ((h * 1103515245 + 12345) & 0x7fffffff);
-      const noise = ((h & 0xffff) / 32768) - 1;
-      if (i % 512 === 0) {
-        h = ((h * 1103515245 + 12345) & 0x7fffffff);
-        const target = (h % 100) / 100;
-        env += (target - env) * 0.3;
-      }
-      data[i] = noise * env * 0.9;
-    }
-    return data;
-  }, [seed, rawData, fileId, projectId, loadFailed]);
-
-  const audioData = rawData || fakeData;
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container || !audioData) return;
-
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    if (w === 0 || h === 0) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    const ctx = canvas.getContext('2d')!;
-    ctx.scale(dpr, dpr);
-
-    // Background — matches JUCE GhostColours::waveformBg
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, w, h);
-
-    const mid = h / 2;
-    const samplesPerPixel = audioData.length / w;
-
-    // Pre-compute peaks once
-    const peaks = new Float32Array(w);
-    for (let x = 0; x < w; x++) {
-      let max = 0;
-      const start = Math.floor(x * samplesPerPixel);
-      const end = Math.min(Math.floor((x + 1) * samplesPerPixel), audioData.length);
-      for (let j = start; j < end; j++) {
-        const abs = Math.abs(audioData[j]);
-        if (abs > max) max = abs;
-      }
-      peaks[x] = max;
-    }
-
-    // Draw each column with gradient from #00FFC8 to #8B5CF6 across width
-    // Matches JUCE: accentGradStart.interpolatedWith(accentGradEnd, t)
-    for (let x = 0; x < w; x++) {
-      const t = x / w;
-      // Interpolate #00FFC8 → #8B5CF6
-      const r = Math.round(0x00 + (0x8B - 0x00) * t);
-      const g = Math.round(0xFF + (0x5C - 0xFF) * t);
-      const b = Math.round(0xC8 + (0xF6 - 0xC8) * t);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-
-      const peakH = peaks[x] * mid * 0.84; // 0.42 * h in JUCE = 0.84 * mid
-      if (peakH > 0.5) {
-        ctx.fillRect(x, mid - peakH, 1, peakH * 2);
-      }
-    }
-  }, [audioData]);
-
-  useEffect(() => {
-    draw();
-    const obs = new ResizeObserver(draw);
-    if (containerRef.current) obs.observe(containerRef.current);
-    return () => obs.disconnect();
-  }, [draw]);
-
-  const { currentTime, duration, isPlaying, soloPlayingTrackId, soloCurrentTime, soloDuration } = useAudioStore();
-
-  // Determine playhead position: solo track takes priority
-  let playheadPct = 0;
-  let showLine = false;
-  if (showPlayhead) {
-    if (trackId && soloPlayingTrackId === trackId && soloDuration > 0) {
-      playheadPct = (soloCurrentTime / soloDuration) * 100;
-      showLine = true;
-    } else if (isPlaying && duration > 0) {
-      playheadPct = (currentTime / duration) * 100;
-      showLine = true;
-    }
-  }
-
-  return (
-    <div ref={containerRef} className="flex-1 overflow-hidden rounded relative" style={{ height }}>
-      <canvas ref={canvasRef} style={{ display: 'block' }} />
-      {showLine && (
-        <div
-          className="absolute top-0 bottom-0 w-[2px] bg-white pointer-events-none shadow-[0_0_6px_rgba(255,255,255,0.6)]"
-          style={{ left: `${playheadPct}%` }}
-        />
-      )}
-    </div>
-  );
-}
-
-function VideoGrid({ members, userId, onAddFriend }: { members: any[]; userId?: string; onAddFriend?: () => void }) {
-  const [cameraOn, setCameraOn] = useState(false);
-  const [micOn, setMicOn] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [showMicMenu, setShowMicMenu] = useState(false);
-  const [showCamMenu, setShowCamMenu] = useState(false);
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const [selectedCamId, setSelectedCamId] = useState<string>('');
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const animFrameRef = useRef<number>(0);
-  const micMenuRef = useRef<HTMLDivElement>(null);
-  const camMenuRef = useRef<HTMLDivElement>(null);
-  const camBtnRef = useRef<HTMLButtonElement>(null);
-  const micBtnRef = useRef<HTMLButtonElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number } | null>(null);
-
-  // Fetch audio + video input devices
-  const fetchDevices = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
-      setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
-    } catch (err) {
-      console.error('Device enumeration error:', err);
-    }
-  };
-
-  // Set up audio analyser for speaking detection
-  const setupAnalyser = (stream: MediaStream) => {
-    if (audioCtxRef.current) audioCtxRef.current.close();
-    const ctx = new AudioContext();
-    audioCtxRef.current = ctx;
-    const source = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.5;
-    source.connect(analyser);
-    analyserRef.current = analyser;
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    let logCount = 0;
-    const checkLevel = () => {
-      analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length;
-      if (logCount++ % 60 === 0) console.log('[Mic Level]', avg.toFixed(1));
-      const speaking = avg > 5;
-      setIsSpeaking(speaking);
-      (window as any).__ghostSpeaking = speaking;
-      animFrameRef.current = requestAnimationFrame(checkLevel);
-    };
-    checkLevel();
-  };
-
-  const startMic = async (deviceId?: string) => {
-    // Stop existing audio tracks
-    if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach(t => t.stop());
-    }
-
-    // Try requested device first, then fall back to others
-    const devicesToTry: (string | undefined)[] = [];
-    if (deviceId) devicesToTry.push(deviceId);
-    // Add all available audio devices as fallbacks
-    for (const d of audioDevices) {
-      if (d.deviceId !== deviceId) devicesToTry.push(d.deviceId);
-    }
-    if (!deviceId) devicesToTry.unshift(undefined); // try default first
-
-    for (const tryId of devicesToTry) {
-      try {
-        const constraints: MediaStreamConstraints = {
-          audio: tryId
-            ? { deviceId: { ideal: tryId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-            : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        };
-        console.log('[Mic] Trying device:', tryId || 'default');
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        streamRef.current = stream;
-        setupAnalyser(stream);
-        setMicOn(true);
-        if (tryId) setSelectedDeviceId(tryId);
-        fetchDevices();
-        console.log('[Mic] Started:', stream.getAudioTracks()[0]?.label);
-        return;
-      } catch (err: any) {
-        console.warn('[Mic] Failed device:', tryId || 'default', err?.name, err?.message);
-        continue;
-      }
-    }
-    console.error('[Mic] All devices failed');
-    alert('Could not access any microphone. Make sure no other app is using it exclusively.');
-  };
-
-  const startCamera = async (deviceId?: string) => {
-    if (streamRef.current) {
-      streamRef.current.getVideoTracks().forEach(t => t.stop());
-    }
-    try {
-      const videoConstraint = deviceId ? { deviceId: { exact: deviceId } } : true;
-      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: micOn });
-      streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-      setCameraOn(true);
-      fetchDevices();
-    } catch (err) {
-      console.error('Camera error:', err);
-    }
-  };
-
-  const toggleCamera = async () => {
-    if (cameraOn) {
-      if (streamRef.current) {
-        streamRef.current.getVideoTracks().forEach(t => t.stop());
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setCameraOn(false);
-    } else {
-      await startCamera(selectedCamId || undefined);
-    }
-  };
-
-  const toggleMic = async () => {
-    if (micOn) {
-      if (streamRef.current) {
-        streamRef.current.getAudioTracks().forEach(t => { t.enabled = false; t.stop(); });
-      }
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
-      setIsSpeaking(false);
-      setMicOn(false);
-    } else {
-      await startMic(selectedDeviceId || undefined);
-    }
-  };
-
-  const selectDevice = async (deviceId: string) => {
-    setSelectedDeviceId(deviceId);
-    setShowMicMenu(false);
-    // Always start mic when selecting a device
-    await startMic(deviceId);
-  };
-
-  const selectCam = async (deviceId: string) => {
-    setSelectedCamId(deviceId);
-    setShowCamMenu(false);
-    if (cameraOn) {
-      await startCamera(deviceId);
-    }
-  };
-
-  const handleMicClick = async () => {
-    setShowCamMenu(false);
-    if (!micOn) {
-      await startMic(selectedDeviceId || undefined);
-      await fetchDevices();
-      if (micBtnRef.current) {
-        setMenuPos({ top: micBtnRef.current.getBoundingClientRect().bottom + 16 });
-      }
-      setShowMicMenu(true);
-    } else {
-      toggleMic();
-      setShowMicMenu(false);
-    }
-  };
-
-  const handleCamClick = async () => {
-    setShowMicMenu(false);
-    if (!cameraOn) {
-      await startCamera(selectedCamId || undefined);
-      if (!micOn) await startMic(selectedDeviceId || undefined);
-      await fetchDevices();
-      if (camBtnRef.current) {
-        setMenuPos({ top: camBtnRef.current.getBoundingClientRect().bottom + 16 });
-      }
-      setShowCamMenu(true);
-    } else {
-      toggleCamera();
-      setShowCamMenu(false);
-    }
-  };
-
-  // Close menus on outside click
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (showMicMenu && micMenuRef.current && !micMenuRef.current.contains(target) && micBtnRef.current && !micBtnRef.current.contains(target)) {
-        setShowMicMenu(false);
-      }
-      if (showCamMenu && camMenuRef.current && !camMenuRef.current.contains(target) && camBtnRef.current && !camBtnRef.current.contains(target)) {
-        setShowCamMenu(false);
-      }
-    };
-    if (showMicMenu || showCamMenu) {
-      // Use setTimeout so the current click doesn't immediately close the menu
-      const timer = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
-      return () => { clearTimeout(timer); document.removeEventListener('mousedown', handleClick); };
-    }
-    return () => {};
-  }, [showMicMenu, showCamMenu]);
-
-  // Attach stream to video element when camera turns on
-  useEffect(() => {
-    if (cameraOn && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [cameraOn]);
-
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (audioCtxRef.current) audioCtxRef.current.close();
-    };
-  }, []);
-
-  // Load devices on mount
-  useEffect(() => { fetchDevices(); }, []);
-
-  return (
-    <div className="mb-2">
-      {/* Device dropdown menus — portaled to body */}
-      {showCamMenu && menuPos && createPortal(
-        <div ref={camMenuRef} className="fixed py-1.5 rounded-xl shadow-2xl animate-popup" onMouseLeave={() => setShowCamMenu(false)} style={{ zIndex: 9999, background: 'rgba(20,10,35,0.97)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(20px)', top: menuPos.top, right: 6, width: 304 }}>
-          <button onClick={async () => { if (cameraOn) { toggleCamera(); } else { await startCamera(selectedCamId || undefined); } setShowCamMenu(false); }}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors font-medium flex items-center gap-2 ${cameraOn ? 'text-red-400' : 'text-green-400'}`}
-          >
-            <span className={`w-2 h-2 rounded-full ${cameraOn ? 'bg-purple-500' : 'bg-red-500'}`} />
-            {cameraOn ? 'Turn Off Camera' : 'Turn On Camera'}
-          </button>
-          <div className="h-px bg-white/10 mx-2 my-1" />
-          <div className="px-3 py-1 text-white/40 font-semibold uppercase tracking-wider text-[10px]">Select Camera</div>
-          <button onClick={async () => { selectCam(''); await startCamera(); setShowCamMenu(false); }}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors ${selectedCamId === '' ? 'text-purple-400' : 'text-white/70'}`}
-          >Default</button>
-          {videoDevices.map(d => (
-            <button key={d.deviceId} onClick={async () => { selectCam(d.deviceId); await startCamera(d.deviceId); setShowCamMenu(false); }}
-              className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors truncate ${d.deviceId === selectedCamId ? 'text-purple-400' : 'text-white/70'}`}
-            >
-              {d.label || `Camera ${videoDevices.indexOf(d) + 1}`}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
-      {showMicMenu && menuPos && createPortal(
-        <div ref={micMenuRef} className="fixed py-1.5 rounded-xl shadow-2xl animate-popup" onMouseLeave={() => setShowMicMenu(false)} style={{ zIndex: 9999, background: 'rgba(20,10,35,0.97)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(20px)', top: menuPos.top, right: 6, width: 304 }}>
-          <button onClick={async () => { if (micOn) { toggleMic(); } else { await startMic(selectedDeviceId || undefined); } setShowMicMenu(false); }}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors font-medium flex items-center gap-2 ${micOn ? 'text-red-400' : 'text-green-400'}`}
-          >
-            <span className={`w-2 h-2 rounded-full ${micOn ? 'bg-green-500' : 'bg-red-500'}`} />
-            {micOn ? 'Mute Microphone' : 'Unmute Microphone'}
-          </button>
-          <div className="h-px bg-white/10 mx-2 my-1" />
-          <div className="px-3 py-1 text-white/40 font-semibold uppercase tracking-wider text-[10px]">Select Microphone</div>
-          <button onClick={() => selectDevice('')}
-            className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors ${selectedDeviceId === '' ? 'text-green-400' : 'text-white/70'}`}
-          >Default</button>
-          {audioDevices.map(d => (
-            <button key={d.deviceId} onClick={() => selectDevice(d.deviceId)}
-              className={`w-full text-left px-3 py-2 text-[12px] hover:bg-white/10 transition-colors truncate ${d.deviceId === selectedDeviceId ? 'text-green-400' : 'text-white/70'}`}
-            >
-              {d.label || `Microphone ${audioDevices.indexOf(d) + 1}`}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )}
-    <div className="grid grid-cols-2 gap-1.5">
-      {/* 4 equal quadrants — 2x2 grid */}
-      {Array.from({ length: 4 }).map((_, i) => {
-        const myIndex = members.findIndex(m => m.userId === userId);
-        const me = myIndex >= 0 ? members[myIndex] : null;
-        // Slot 0 = you, slots 1-3 = other members
-        const isMe = i === 0;
-        const member = isMe ? me : (() => {
-          const otherMembers = members.filter(m => m.userId !== userId);
-          return otherMembers[i - 1] || null;
-        })();
-
-        if (isMe && !me) return null;
-
-        return (
-          <div key={i} className="relative aspect-square">
-          <div className="relative w-full h-full rounded-xl overflow-hidden group/video" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.15)' }}>
-            {isMe && cameraOn && (
-              <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 w-full h-full object-cover" />
-            )}
-            {isMe && cameraOn && isSpeaking && micOn && (
-              <motion.div
-                className="absolute inset-0 rounded-xl pointer-events-none z-20"
-                animate={{ borderColor: ['rgba(34,197,94,0.5)', 'rgba(34,197,94,0.15)', 'rgba(34,197,94,0.5)'] }}
-                style={{ border: '2px solid rgba(34,197,94,0.5)' }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-              />
-            )}
-            {isMe && !cameraOn && (
-              <div className="absolute inset-0 flex items-center justify-center pb-6">
-                <div
-                  className="rounded-full relative"
-                >
-                  {isSpeaking && micOn && (
-                    <motion.div
-                      className="absolute inset-[-10px] rounded-full pointer-events-none"
-                      style={{ background: 'radial-gradient(circle, rgba(34,197,94,0.35) 30%, rgba(0,255,200,0.15) 60%, transparent 80%)' }}
-                      animate={{ scale: [1, 1.2, 1], opacity: [0.8, 0.4, 0.8] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                  )}
-                  <div className="relative z-10">
-                    <Avatar name={me!.displayName || '?'} src={me!.avatarUrl} size="xl" />
-                  </div>
-                </div>
-              </div>
-            )}
-            {!isMe && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                {member ? (
-                  <Avatar name={member.displayName || '?'} src={member.avatarUrl} size="xl" />
-                ) : (
-                  <motion.button
-                    onClick={() => { if (onAddFriend) onAddFriend(); }}
-                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all bg-white/[0.06] text-white/20 hover:bg-white/[0.1] hover:text-white/40"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </motion.button>
-                )}
-              </div>
-            )}
-            {/* Controls on your tile */}
-            {isMe && (
-              <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 transition-opacity duration-200 ${cameraOn ? 'opacity-0 group-hover/video:opacity-100' : ''}`}>
-                  <motion.button ref={camBtnRef} onClick={handleCamClick} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${cameraOn ? 'bg-purple-600 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
-                  </motion.button>
-                  <motion.button ref={micBtnRef} onClick={handleMicClick} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${micOn ? 'bg-green-600 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'}`}
-                  >
-                    {micOn ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" /><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
-                    )}
-                  </motion.button>
-                  <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className="w-8 h-8 rounded-full flex items-center justify-center transition-colors bg-white/10 text-white/50 hover:bg-white/20"
-                    title="Screen share"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                      <line x1="8" y1="21" x2="16" y2="21" />
-                      <line x1="12" y1="17" x2="12" y2="21" />
-                    </svg>
-                  </motion.button>
-              </div>
-            )}
-          </div>
-          </div>
-        );
-      })}
-    </div>
-    </div>
-  );
-}
-
-function FullMixDropZone({ projectId, onFilesAdded, isBeat, compact }: { projectId: string; onFilesAdded: () => void; isBeat?: boolean; compact?: boolean }) {
-  const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [status, setStatus] = useState('');
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith('audio/') || f.name.match(/\.(wav|mp3|flac|aiff|ogg|m4a|aac)$/i)
-    );
-    if (droppedFiles.length === 0) {
-      setStatus('No audio files detected');
-      setTimeout(() => setStatus(''), 2000);
-      return;
-    }
-    setUploading(true);
-    setStatus(`Uploading ${droppedFiles.length} file(s)...`);
-    try {
-      for (const file of droppedFiles) {
-        const { fileId } = await api.uploadFile(projectId, file);
-        const trackName = file.name.replace(/\.[^.]+$/, '');
-        await api.addTrack(projectId, { name: trackName, type: 'fullmix', fileId, fileName: file.name } as any);
-      }
-      setStatus(`Added ${droppedFiles.length} mix(es)`);
-      onFilesAdded();
-    } catch (err: any) {
-      setStatus(err.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      setTimeout(() => setStatus(''), 3000);
-    }
-  };
-
-  const handleBrowse = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'audio/*,.wav,.mp3,.flac,.aiff,.ogg,.m4a,.aac';
-    input.onchange = () => {
-      if (input.files && input.files.length > 0) {
-        const fakeEvent = {
-          preventDefault: () => {},
-          dataTransfer: { files: input.files },
-        } as unknown as React.DragEvent;
-        handleDrop(fakeEvent);
-      }
-    };
-    input.click();
-  };
-
-  return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-      className="rounded-xl overflow-visible relative"
-    >
-      {/* Aurora glow border */}
-      <motion.div
-        className="absolute -inset-px rounded-xl opacity-40 pointer-events-none"
-        style={{
-          background: 'linear-gradient(90deg, #00FFC8, #7C3AED, #EC4899, #F59E0B, #00B4D8, #00FFC8)',
-          backgroundSize: '200% 100%',
-        }}
-        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
-      />
-      <div className={`${compact ? 'h-[48px]' : 'h-[95px]'} relative overflow-hidden rounded-xl transition-all backdrop-blur-md ${dragOver ? 'bg-white/[0.06]' : 'bg-white/[0.03]'}`} style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.2)' }}>
-        {/* Glass gloss overlay */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, transparent 40%, rgba(0,0,0,0.08) 100%)' }} />
-        <div className="absolute inset-0 opacity-[0.15] pointer-events-none">
-          <Waveform seed="fullmix-demo-placeholder" height={95} />
-        </div>
-        <div className="absolute inset-0 flex items-center gap-3 pl-8 pr-5">
-          {uploading ? (
-            <span className="text-[13px] text-ghost-green animate-pulse">{status}</span>
-          ) : status ? (
-            <span className="text-[13px] text-ghost-green">{status}</span>
-          ) : (
-            <>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={dragOver ? '#00FFC8' : '#ffffff'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <span className={`text-[13px] font-bold uppercase tracking-wide ml-2 ${dragOver ? 'text-ghost-green' : 'text-white'}`} style={{ textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0px 2px rgba(0,0,0,0.4)' }}>Drag audio files here</span>
-              <div className="flex-1" />
-              <motion.button
-                onClick={handleBrowse}
-                className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-                style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                Upload
-              </motion.button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
-}
-
-function StemRow({
-  name, type, onDelete, onRename, fileId, projectId, trackId, createdAt, compact, widthPercent,
-}: {
-  name: string; type: string;
-  onDelete: () => void;
-  onRename: (newName: string) => void;
-  fileId?: string | null; projectId?: string; trackId: string;
-  createdAt?: string | null;
-  compact?: boolean;
-  widthPercent?: number;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(name);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const isMuted = useAudioStore((s) => s.loadedTracks.get(trackId)?.muted ?? false);
-  const setTrackMuted = useAudioStore((s) => s.setTrackMuted);
-  const trackPitch = useAudioStore((s) => s.loadedTracks.get(trackId)?.pitch ?? 0);
-  const setTrackPitch = useAudioStore((s) => s.setTrackPitch);
-  const [showPitch, setShowPitch] = useState(false);
-  const pitchRef = useRef<HTMLDivElement>(null);
-
-  const downloadUrl = fileId && projectId ? api.getDirectDownloadUrl(projectId, fileId) : null;
-
-  // Poll the audioBufferCache until the Waveform child populates it
-  const [ready, setReady] = useState(fileId ? audioBufferCache.has(fileId) : false);
-  useEffect(() => {
-    if (!fileId || ready) return;
-    const id = setInterval(() => {
-      if (audioBufferCache.has(fileId)) { setReady(true); clearInterval(id); }
-    }, 200);
-    return () => clearInterval(id);
-  }, [fileId, ready]);
-
-  const startTimeRef = useRef(0);
-  const animFrameRef = useRef<number | null>(null);
-
-  const handlePlay = () => {
-    if (isPlaying && sourceRef.current) {
-      try { sourceRef.current.stop(); } catch {}
-      sourceRef.current = null;
-      setIsPlaying(false);
-      useAudioStore.setState({ soloPlayingTrackId: null, soloCurrentTime: 0, soloDuration: 0 });
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      return;
-    }
-    const buffer = fileId ? audioBufferCache.get(fileId) : null;
-    if (!buffer) return;
-    if (!ctxRef.current) ctxRef.current = new AudioContext();
-    const ctx = ctxRef.current;
-    if (ctx.state === 'suspended') ctx.resume();
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    startTimeRef.current = ctx.currentTime;
-    source.onended = () => {
-      setIsPlaying(false);
-      sourceRef.current = null;
-      useAudioStore.setState({ soloPlayingTrackId: null, soloCurrentTime: 0, soloDuration: 0 });
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-    source.start(0);
-    sourceRef.current = source;
-    setIsPlaying(true);
-    useAudioStore.setState({ soloPlayingTrackId: trackId, soloDuration: buffer.duration });
-
-    // Update playhead position
-    const updatePlayhead = () => {
-      if (!sourceRef.current) return;
-      const elapsed = ctx.currentTime - startTimeRef.current;
-      useAudioStore.setState({ soloCurrentTime: elapsed });
-      animFrameRef.current = requestAnimationFrame(updatePlayhead);
-    };
-    updatePlayhead();
-  };
-
-  const handleDownload = () => {
-    if (downloadUrl) {
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = name + '.wav';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  };
-
-  const dragTriggeredRef = useRef(false);
-
-  const handleDragStart = (e: React.DragEvent) => {
-    if (!downloadUrl) return;
-    e.dataTransfer.clearData();
-    e.dataTransfer.effectAllowed = 'none';
-    e.dataTransfer.dropEffect = 'none';
-    if (dragTriggeredRef.current) return;
-    dragTriggeredRef.current = true;
-    setTimeout(() => { dragTriggeredRef.current = false; }, 2000);
-    const ghostUrl = `ghost://drag-to-daw?url=${encodeURIComponent(downloadUrl)}&fileName=${encodeURIComponent(name + '.wav')}`;
-    window.location.href = ghostUrl;
-  };
-
-  return (
-    <div className="relative rounded-xl overflow-visible">
-      {/* AI rainbow border */}
-      <motion.div
-        className="absolute -inset-px rounded-xl opacity-40 pointer-events-none"
-        style={{
-          background: 'linear-gradient(90deg, #00FFC8, #7C3AED, #EC4899, #F59E0B, #00B4D8, #00FFC8)',
-          backgroundSize: '200% 100%',
-        }}
-        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
-      />
-    <div
-      draggable={!!fileId}
-      onDragStart={handleDragStart}
-      className={`group relative flex items-center rounded-xl overflow-hidden ${compact ? 'h-[48px]' : 'h-[95px]'} ${fileId ? 'cursor-grab active:cursor-grabbing' : ''}`}
-      style={widthPercent !== undefined && widthPercent < 100 ? { width: `${widthPercent}%` } : undefined}
-    >
-      {/* Waveform full width with overlay controls */}
-      <div className="flex-1 h-full overflow-hidden bg-[#0A0412] relative">
-        <Waveform seed={name + type} height={compact ? 48 : 95} fileId={fileId} projectId={projectId} trackId={trackId} />
-        {/* Left gradient for text readability */}
-        <div className="absolute inset-y-0 left-0 w-[45%] pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,4,18,0.85) 0%, rgba(10,4,18,0.4) 60%, transparent 100%)' }} />
-        {/* Play + Mute buttons overlay */}
-        <div className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
-          <motion.button
-            onClick={handlePlay}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${
-              isPlaying
-                ? 'text-white shadow-[0_0_20px_rgba(124,58,237,0.5),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                : ready
-                  ? 'text-white shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]'
-                  : 'bg-white/5 text-ghost-text-muted opacity-40'
-            }`}
-            style={{ background: isPlaying || ready ? 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' : undefined }}
-            disabled={!ready}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            {isPlaying ? (
-              <svg width="12" height="12" viewBox="0 0 12 14" fill="currentColor">
-                <rect x="0" y="0" width="4" height="14" rx="1" />
-                <rect x="8" y="0" width="4" height="14" rx="1" />
-              </svg>
-            ) : (
-              <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
-            )}
-          </motion.button>
-          <motion.button
-            onClick={() => setTrackMuted(trackId, !isMuted)}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]`}
-            style={{ background: isMuted ? 'linear-gradient(180deg, #DC2626 0%, #991B1B 100%)' : 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <line x1="23" y1="9" x2="17" y2="15" />
-                <line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-              </svg>
-            )}
-          </motion.button>
-        </div>
-        {/* Name overlay */}
-        <div className="absolute left-3 top-2 z-10 max-w-[40%]">
-          {editing ? (
-            <input
-              autoFocus
-              className="text-[13px] font-semibold text-white bg-black/60 border border-ghost-green/50 rounded px-1.5 py-0.5 outline-none focus:border-ghost-green w-full"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onBlur={() => {
-                if (editName.trim() && editName !== name) onRename(editName.trim());
-                setEditing(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                if (e.key === 'Escape') { setEditName(name); setEditing(false); }
-              }}
-            />
-          ) : (
-            <p
-              className="text-[13px] font-bold text-white truncate cursor-pointer hover:text-ghost-green transition-colors"
-              onClick={() => { setEditName(name); setEditing(true); }}
-              title={name}
-            >
-              {name}
-            </p>
-          )}
-          <p className="text-[10px] text-white/40 uppercase font-medium mt-0.5">{type === 'audio' ? 'stem' : type === 'fullmix' ? 'mix' : type}</p>
-        </div>
-        {/* Time overlay */}
-        {createdAt && (
-          <div className="absolute left-3 bottom-2 z-10">
-            <p className="text-[11px] text-ghost-green font-medium" title={new Date(createdAt).toLocaleString()}>
-              {formatDate(createdAt)}
-            </p>
-          </div>
-        )}
-        {/* Action buttons overlay */}
-        <div className="absolute top-1/2 -translate-y-1/2 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ right: '20px' }}>
-          {widthPercent !== undefined && widthPercent < 100 && (
-            <motion.button
-              onClick={() => {
-                useAudioStore.getState().loopTrackToFill(trackId, fileId || undefined);
-                const track = useAudioStore.getState().loadedTracks.get(trackId);
-                if (track && fileId) {
-                  audioBufferCache.set(fileId, track.buffer);
-                  rawDataCache.delete(fileId);
-                }
-              }}
-              title="Loop to fill"
-              className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(34,197,94,0.4),0_2px_8px_rgba(0,0,0,0.3)]"
-              style={{ background: 'linear-gradient(180deg, #059669 0%, #065F46 100%)' }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="17 1 21 5 17 9" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <polyline points="7 23 3 19 7 15" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-            </motion.button>
-          )}
-          <motion.button
-            onClick={onDelete}
-            title="Delete"
-            className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
-            style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-          </motion.button>
-          <motion.button
-            onClick={handleDownload}
-            title="Download"
-            className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
-            style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </motion.button>
-          <motion.button
-            title="Post to Feed"
-            className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
-            style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 3L3 10l7 3 3 7 8-17z" />
-            </svg>
-          </motion.button>
-        </div>
-      </div>
-    </div>
-    </div>
-  );
-}
-
-function formatTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-// Parse BPM from a filename like "KMRBI_RHS6_140_synth_chords" → 140
-function detectBpmFromName(name: string): number {
-  // Look for common BPM patterns: _140_, -140-, _140bpm, 140BPM, etc.
-  const patterns = [
-    /[_\-\s](\d{2,3})\s*bpm/i,        // _140bpm, _140 bpm
-    /bpm\s*[_\-\s]*(\d{2,3})/i,        // bpm140, bpm_140
-    /[_\-](\d{2,3})[_\-]/,             // _140_ or -140-
-    /^(\d{2,3})[_\-]/,                 // 140_ at start
-  ];
-  for (const pat of patterns) {
-    const match = name.match(pat);
-    if (match) {
-      const val = parseInt(match[1]);
-      if (val >= 60 && val <= 250) return val;
-    }
-  }
-  return 0;
-}
-
-function FrequencyBar({ seekBarRef, progress, isPlaying, onSeekClick, onSeekDrag, onSeekEnd, children }: {
-  seekBarRef: React.RefObject<HTMLDivElement>;
-  progress: number;
-  isPlaying: boolean;
-  onSeekClick: (e: React.MouseEvent<HTMLDivElement>) => void;
-  onSeekDrag: (e: React.MouseEvent<HTMLDivElement>) => void;
-  onSeekEnd: () => void;
-  children?: React.ReactNode;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
-  const prevData = useRef<Float32Array | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let running = true;
-    const BAR_COUNT = 128;
-    if (!prevData.current) prevData.current = new Float32Array(BAR_COUNT);
-
-    const draw = () => {
-      if (!running) return;
-      const w = canvas.offsetWidth;
-      const h = canvas.offsetHeight;
-      const dpr = window.devicePixelRatio || 2;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-
-      const midY = h / 2;
-      const analyser = getAnalyser();
-      const smoothed = prevData.current!;
-
-      if (analyser && isPlaying) {
-        const bufLen = analyser.frequencyBinCount;
-        const raw = new Uint8Array(bufLen);
-        analyser.getByteFrequencyData(raw);
-
-        for (let i = 0; i < BAR_COUNT; i++) {
-          const idx = Math.floor(i * bufLen / BAR_COUNT);
-          const target = raw[idx] / 255;
-          // Smooth rise fast, fall slow
-          smoothed[i] += (target - smoothed[i]) * (target > smoothed[i] ? 0.4 : 0.08);
-        }
-      } else {
-        // Fade out when not playing
-        for (let i = 0; i < BAR_COUNT; i++) {
-          smoothed[i] *= 0.92;
-        }
-      }
-
-      const HALF = BAR_COUNT / 2;
-      const gap = 1;
-      const barW = Math.max(1, (w - gap * BAR_COUNT) / BAR_COUNT);
-      const midX = w / 2;
-
-      for (let i = 0; i < BAR_COUNT; i++) {
-        // Mirror: high freq in center, low freq on edges
-        const freqIdx = i < HALF ? i : (BAR_COUNT - 1 - i);
-        const val = smoothed[freqIdx];
-        const barH = val * midY * 0.9;
-        const x = i * (barW + gap);
-
-        // Color based on distance from center (low freq = center = cyan, high freq = edges = pink)
-        const ratio = freqIdx / HALF;
-        let r: number, g: number, b: number;
-        if (ratio < 0.33) {
-          const t = ratio / 0.33;
-          r = Math.round(0 + 124 * t);
-          g = Math.round(255 - 197 * t);
-          b = Math.round(200 + 37 * t);
-        } else if (ratio < 0.66) {
-          const t = (ratio - 0.33) / 0.33;
-          r = Math.round(124 + 112 * t);
-          g = Math.round(58 - 18 * t);
-          b = Math.round(237 - 80 * t);
-        } else {
-          const t = (ratio - 0.66) / 0.34;
-          r = Math.round(236 + 19 * t);
-          g = Math.round(40 + 26 * t);
-          b = Math.round(157 + 98 * t);
-        }
-
-        const alpha = 0.5 + val * 0.5;
-
-        // Top half (mirrored upward)
-        const grad = ctx.createLinearGradient(x, midY, x, midY - barH);
-        grad.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.2})`);
-        grad.addColorStop(0.5, `rgba(${r},${g},${b},${alpha})`);
-        grad.addColorStop(1, `rgba(${r},${g},${b},${alpha * 0.8})`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.roundRect(x, midY - barH, barW, barH, [2, 2, 0, 0]);
-        ctx.fill();
-
-        // Bottom half (mirrored downward, dimmer)
-        const grad2 = ctx.createLinearGradient(x, midY, x, midY + barH);
-        grad2.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.15})`);
-        grad2.addColorStop(1, `rgba(${r},${g},${b},0)`);
-        ctx.fillStyle = grad2;
-        ctx.beginPath();
-        ctx.roundRect(x, midY, barW, barH * 0.6, [0, 0, 2, 2]);
-        ctx.fill();
-
-        // Glow on peaks
-        if (val > 0.7) {
-          ctx.shadowColor = `rgba(${r},${g},${b},${(val - 0.7) * 2})`;
-          ctx.shadowBlur = 8;
-          ctx.fillStyle = `rgba(${r},${g},${b},${(val - 0.7) * 0.6})`;
-          ctx.fillRect(x, midY - barH, barW, 2);
-          ctx.shadowBlur = 0;
-        }
-      }
-
-      // Center line
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.fillRect(0, midY - 0.5, w, 1);
-
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      animRef.current = requestAnimationFrame(draw);
-    };
-
-    animRef.current = requestAnimationFrame(draw);
-    return () => { running = false; cancelAnimationFrame(animRef.current); };
-  }, [isPlaying, progress]);
-
-  return (
-    <div
-      ref={seekBarRef}
-      className="w-full h-16 cursor-pointer relative group"
-      style={{ background: 'rgba(6,2,14,0.95)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
-      onMouseDown={onSeekClick}
-      onMouseMove={onSeekDrag}
-      onMouseUp={onSeekEnd}
-      onMouseLeave={onSeekEnd}
-    >
-      {/* Frequency canvas */}
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
-      {/* Progress dim overlay */}
-      <div className="absolute inset-y-0 left-0 pointer-events-none z-[2]" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, rgba(0,255,200,0.03), rgba(124,58,237,0.06))' }} />
-      {/* Playhead */}
-      <div className="absolute top-0 bottom-0 w-0.5 pointer-events-none z-[3]" style={{ left: `${progress}%`, background: 'rgba(255,255,255,0.9)', boxShadow: '0 0 8px rgba(0,255,200,0.5), 0 0 2px rgba(255,255,255,0.8)' }} />
-      {/* Transport controls — solid, on top of everything */}
-      <div className="absolute inset-0 z-[4]">{children}</div>
-    </div>
-  );
-}
-
-function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
-  const { isPlaying, currentTime, duration, loadedTracks, projectBpm, canUndo, canRedo, play, pause, stop, seekTo, loadTrack, loadTrackFromBuffer, setProjectBpm } = useAudioStore();
-  const currentProject = useProjectStore((s) => s.currentProject);
-  const [loop, setLoop] = useState(false);
-  const [metronome, setMetronome] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const seekBarRef = useRef<HTMLDivElement>(null);
-  const loadedRef = useRef<Set<string>>(new Set());
-
-  // Sync project BPM to audio store
-  useEffect(() => {
-    if (projectTempo && projectTempo > 0) {
-      setProjectBpm(projectTempo);
-    }
-  }, [projectTempo, setProjectBpm]);
-
-  // Auto-load tracks into the audio store when their buffers become available
-  useEffect(() => {
-    if (!tracks || !projectId) return;
-    const tryLoad = () => {
-      for (const track of tracks) {
-        if (!track.fileId || loadedRef.current.has(track.id)) continue;
-        if (audioBufferCache.has(track.fileId)) {
-          loadedRef.current.add(track.id);
-          const trackName = track.name || track.fileName || '';
-          const detectedBpm = detectBpmFromName(trackName);
-          const buffer = audioBufferCache.get(track.fileId)!;
-          loadTrackFromBuffer(track.id, buffer, detectedBpm);
-        }
-      }
-    };
-    tryLoad();
-    const interval = setInterval(tryLoad, 500);
-    return () => clearInterval(interval);
-  }, [tracks, projectId, loadTrack]);
-
-  // Clear loaded ref when project changes
-  useEffect(() => {
-    loadedRef.current.clear();
-  }, [projectId]);
-
-  const hasTracksLoaded = loadedTracks.size > 0;
-
-  const handlePlayPause = () => {
-    if (isPlaying) pause();
-    else play();
-  };
-
-  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (duration <= 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    seekTo(ratio * duration);
-  };
-
-  const handleSeekDrag = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragging || duration <= 0 || !seekBarRef.current) return;
-    const rect = seekBarRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    seekTo(ratio * duration);
-  };
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <div className="shrink-0 flex flex-col w-full" style={{ background: 'rgba(10,4,18,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      {/* Bar ruler */}
-      <div className="h-6 w-full flex items-stretch overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        {Array.from({ length: 16 }, (_, bar) => (
-          <div key={bar} className="flex-1 flex items-start relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.12)' }}>
-            <span className="text-[10px] font-mono text-white/30 ml-1 mt-0.5 select-none">{bar + 1}</span>
-            {/* Sub-beat ticks */}
-            <div className="absolute bottom-0 left-1/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
-            <div className="absolute bottom-0 left-1/2 w-px h-3" style={{ background: 'rgba(255,255,255,0.08)' }} />
-            <div className="absolute bottom-0 left-3/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
-          </div>
-        ))}
-      </div>
-      {/* controls are now overlaid on the FrequencyBar below */}
-      {/* Full-width frequency visualizer with transport controls overlaid */}
-      <FrequencyBar
-        seekBarRef={seekBarRef}
-        progress={progress}
-        isPlaying={isPlaying}
-        onSeekClick={handleSeekClick}
-        onSeekDrag={handleSeekDrag}
-        onSeekEnd={() => setDragging(false)}
-      >
-        {/* Transport controls overlaid on visualizer */}
-        <div className="absolute inset-0 flex items-center z-10 pointer-events-none">
-          {/* Left: undo/redo + time */}
-          <div className="absolute left-3 flex items-center gap-1 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
-            <button onClick={() => {
-              const state = useAudioStore.getState();
-              if (!state.canUndo) return;
-              state.undo();
-              state.loadedTracks.forEach((t, id) => {
-                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
-              });
-            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canUndo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Undo">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-            </button>
-            <button onClick={() => {
-              const state = useAudioStore.getState();
-              if (!state.canRedo) return;
-              state.redo();
-              state.loadedTracks.forEach((t, id) => {
-                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
-              });
-            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canRedo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>
-            </button>
-            <span className="text-[10px] font-mono text-white/70 ml-1">{formatTime(currentTime)}</span>
-          </div>
-
-          {/* Center: transport buttons — aligned with bar 9 (50% of ruler) */}
-          <div className="absolute flex items-center gap-3 pointer-events-auto" style={{ left: '50%', transform: 'translateX(-50%)', filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))' }}>
-            <button onClick={() => seekTo(0)} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Skip Back">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
-            </button>
-            <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Rewind">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
-            </button>
-            <button onClick={handlePlayPause} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all relative z-[5] ${isPlaying ? 'text-white' : 'text-white hover:text-white'}`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 30px rgba(147,51,234,0.5), 0 0 60px rgba(124,58,237,0.2)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
-              {isPlaying ? (
-                <svg width="16" height="16" viewBox="0 0 12 14" fill="white"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
-              )}
-            </button>
-            <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Fast Forward">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
-            </button>
-          </div>
-
-          {/* Right: time + volume + zoom */}
-          <div className="absolute right-3 flex items-center gap-2 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
-            <span className="text-[11px] font-mono text-white/70">{formatTime(currentTime)} / {formatTime(duration)}</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
-            <button onClick={() => onZoomChange?.('half')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'half' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Compact">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
-            </button>
-            <button onClick={() => onZoomChange?.('full')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'full' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Full">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
-            </button>
-          </div>
-        </div>
-      </FrequencyBar>
-    </div>
-  );
-}
+import { useAudioStore } from '../../stores/audioStore';
+import { API_BASE } from '../../lib/constants';
+import { audioBufferCache, rawDataCache } from '../../lib/audio';
+
+// Extracted components
+import ProjectListSidebar, { type SamplePack } from '../layout/ProjectListSidebar';
+import PresenceFriendsList from '../layout/PresenceFriendsList';
+import SettingsPopup from '../common/SettingsPopup';
+import NotificationPopup, { BellIcon, type Invitation, type Notification } from '../common/NotificationPopup';
+import InviteModal from '../common/InviteModal';
+import VideoGrid from '../video/VideoGrid';
+import StemRow from '../tracks/StemRow';
+import Waveform from '../tracks/Waveform';
+import FullMixDropZone from '../tracks/FullMixDropZone';
+import SocialFeed from '../social/SocialFeed';
+import TransportBar from '../audio/TransportBar';
+import { TrackWithWidth, ArrangementDropZone, BarRuler, BarGridOverlay, ArrangementPlayhead } from '../project/ArrangementComponents';
+
+// ── SamplePackContentView (tightly coupled to parent state, kept inline) ──
 
 function SamplePackContentView({
-  pack,
-  onRenamePack,
-  onDeletePack,
-  onRemoveSample,
-  onRefresh,
-  members,
-  onInvite,
+  pack, onRenamePack, onDeletePack, onRemoveSample, onRefresh, members, onInvite,
 }: {
   pack: SamplePack & { items?: any[] };
   onRenamePack: (id: string, name: string) => void;
@@ -2067,10 +92,7 @@ function SamplePackContentView({
     input.accept = 'audio/*,.wav,.mp3,.flac,.aiff,.ogg,.m4a,.aac';
     input.onchange = () => {
       if (input.files && input.files.length > 0) {
-        const fakeEvent = {
-          preventDefault: () => {},
-          dataTransfer: { files: input.files },
-        } as unknown as React.DragEvent;
+        const fakeEvent = { preventDefault: () => {}, dataTransfer: { files: input.files } } as unknown as React.DragEvent;
         handlePackDrop(fakeEvent);
       }
     };
@@ -2098,43 +120,21 @@ function SamplePackContentView({
               <>
                 <div className="w-px h-4 bg-ghost-border shrink-0" />
                 <span className="text-[12px] text-ghost-text-muted flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                   <span className="text-ghost-green font-medium">
                     {new Date(pack.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                   </span>
                 </span>
               </>
             )}
-            {/* Three-dot menu */}
             <div className="relative" ref={packMenuRef}>
-              <button
-                onClick={() => setShowPackMenu(!showPackMenu)}
-                className="w-6 h-6 flex items-center justify-center rounded text-ghost-text-muted hover:text-white hover:bg-ghost-surface-hover transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="2" />
-                  <circle cx="12" cy="12" r="2" />
-                  <circle cx="12" cy="19" r="2" />
-                </svg>
+              <button onClick={() => setShowPackMenu(!showPackMenu)} className="w-6 h-6 flex items-center justify-center rounded text-ghost-text-muted hover:text-white hover:bg-ghost-surface-hover transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" /></svg>
               </button>
               {showPackMenu && (
                 <div className="absolute right-0 top-full mt-1 w-40 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 border border-white/5 py-1">
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this sample pack? This cannot be undone.')) {
-                        onDeletePack(pack.id);
-                      }
-                      setShowPackMenu(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
+                  <button onClick={() => { if (confirm('Delete this sample pack? This cannot be undone.')) onDeletePack(pack.id); setShowPackMenu(false); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                     Delete Pack
                   </button>
                 </div>
@@ -2143,165 +143,7 @@ function SamplePackContentView({
           </div>
         </div>
 
-        {/* Project info bar */}
-                <div className="mb-4">
-                  <div className="flex items-center gap-3 glass-subtle px-5 py-3 min-w-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFC8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <input
-                      className="text-[15px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-2 py-0 rounded-md transition-colors min-w-[60px] flex-1 cursor-text"
-                      value={projectName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProjectName(val);
-                        if (projectNameTimer.current) clearTimeout(projectNameTimer.current);
-                        projectNameTimer.current = setTimeout(() => {
-                          if (val.trim()) updateProject(currentProject.id, { name: val });
-                        }, 500);
-                      }}
-                      onBlur={() => {
-                        if (projectNameTimer.current) clearTimeout(projectNameTimer.current);
-                        if (projectName.trim() && projectName !== currentProject.name) {
-                          updateProject(currentProject.id, { name: projectName });
-                        }
-                      }}
-                    />
-                    <span className="text-[12px] text-ghost-text-muted uppercase tracking-wider font-semibold shrink-0">BPM</span>
-                    {editingField === 'tempo' ? (
-                      <input
-                        autoFocus
-                        type="number"
-                        className="w-14 text-[14px] font-bold text-white bg-ghost-surface-hover px-1.5 py-0.5 rounded border border-ghost-green/50 outline-none shrink-0"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                        defaultValue={currentProject.tempo || ''}
-                        placeholder="___"
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (!isNaN(val) && val > 0) updateProject(currentProject.id, { tempo: val });
-                          setEditingField(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') setEditingField(null);
-                        }}
-                      />
-                    ) : (
-                      <span
-                        onClick={() => setEditingField('tempo')}
-                        className="text-[14px] font-bold text-white shrink-0 cursor-pointer hover:text-ghost-green transition-colors"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                      >{currentProject.tempo || '___'}</span>
-                    )}
-                    <div className="w-px h-4 bg-ghost-border shrink-0" />
-                    <span className="text-[12px] text-ghost-text-muted uppercase tracking-wider font-semibold shrink-0">Key</span>
-                    {editingField === 'key' ? (
-                      <input
-                        autoFocus
-                        className="w-12 text-[14px] font-bold text-white bg-ghost-surface-hover px-1.5 py-0.5 rounded border border-ghost-green/50 outline-none shrink-0"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                        defaultValue={currentProject.key || ''}
-                        placeholder="_"
-                        onBlur={(e) => {
-                          const val = e.target.value.trim();
-                          if (val) updateProject(currentProject.id, { key: val });
-                          setEditingField(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') setEditingField(null);
-                        }}
-                      />
-                    ) : (
-                      <span
-                        onClick={() => setEditingField('key')}
-                        className="text-[14px] font-bold text-white shrink-0 cursor-pointer hover:text-ghost-green transition-colors"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                      >{currentProject.key || '_'}</span>
-                    )}
-                    {currentProject.updatedAt && (
-                      <>
-                        <div className="w-px h-4 bg-ghost-border shrink-0" />
-                        <span className="text-[11px] text-ghost-text-muted flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
-                          </svg>
-                          <span className="text-ghost-green font-medium">
-                            {new Date(currentProject.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                          </span>
-                        </span>
-                      </>
-                    )}
-                    {/* Project menu — far right */}
-                    <div className="relative" ref={projectMenuRef}>
-                      <button
-                        onClick={() => setShowProjectMenu(!showProjectMenu)}
-                        className="w-6 h-6 flex items-center justify-center rounded text-ghost-text-muted hover:text-white hover:bg-ghost-surface-hover transition-colors"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <circle cx="12" cy="5" r="2" />
-                          <circle cx="12" cy="12" r="2" />
-                          <circle cx="12" cy="19" r="2" />
-                        </svg>
-                      </button>
-                      {showProjectMenu && (
-                        <div className="absolute right-0 top-full mt-1 w-40 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 border border-white/5 py-1">
-                          <button
-                            onClick={handleShareProject}
-                            className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-ghost-surface-hover hover:text-white transition-colors flex items-center gap-2"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                              <polyline points="16 6 12 2 8 6" />
-                              <line x1="12" y1="2" x2="12" y2="15" />
-                            </svg>
-                            Share to Feed
-                          </button>
-                          <button
-                            onClick={() => { setShowProjectMenu(false); setShowInvite(true); }}
-                            className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-ghost-surface-hover hover:text-white transition-colors flex items-center gap-2"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                              <circle cx="8.5" cy="7" r="4" />
-                              <line x1="20" y1="8" x2="20" y2="14" />
-                              <line x1="23" y1="11" x2="17" y2="11" />
-                            </svg>
-                            Invite Collaborator
-                          </button>
-                          <div className="h-px bg-white/5 mx-2 my-1" />
-                          {currentProject.ownerId === user?.id ? (
-                            <button
-                              onClick={handleDeleteProject}
-                              className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </svg>
-                              Delete Project
-                            </button>
-                          ) : (
-                            <button
-                              onClick={handleLeaveProject}
-                              className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                <polyline points="16 17 21 12 16 7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                              </svg>
-                              Leave Project
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Collaborators bar */}
+        {/* Collaborators bar */}
         {(() => {
           const { user } = useAuthStore.getState();
           const displayMembers = members.length > 0 ? members : user ? [{ userId: user.id, displayName: user.displayName, role: 'owner', avatarUrl: user.avatarUrl }] : [];
@@ -2331,23 +173,10 @@ function SamplePackContentView({
                     <span className="text-[14px] text-ghost-text-muted">{displayMembers.length} collaborator{displayMembers.length !== 1 ? 's' : ''} online</span>
                   </div>
                 </div>
-
-                <motion.button
-                  onClick={onInvite}
-                  className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-                  style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="8.5" cy="7" r="4" />
-                    <line x1="20" y1="8" x2="20" y2="14" />
-                    <line x1="23" y1="11" x2="17" y2="11" />
-                  </svg>
+                <motion.button onClick={onInvite} className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0" style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
                   Invite
                 </motion.button>
-
               </div>
             </div>
           );
@@ -2358,9 +187,7 @@ function SamplePackContentView({
           onDragOver={(e) => { e.preventDefault(); setPackDragOver(true); }}
           onDragLeave={() => setPackDragOver(false)}
           onDrop={handlePackDrop}
-          className={`rounded-xl overflow-hidden transition-all ${
-            packDragOver ? 'bg-ghost-green/[0.04] border border-ghost-green/30 shadow-glow-green' : 'glass-subtle'
-          }`}
+          className={`rounded-xl overflow-hidden transition-all ${packDragOver ? 'bg-ghost-green/[0.04] border border-ghost-green/30 shadow-glow-green' : 'glass-subtle'}`}
         >
           <div className="flex items-center gap-3 px-4 py-2.5">
             <button className="w-7 h-7 rounded-full bg-ghost-surface-hover/60 flex items-center justify-center text-ghost-text-muted hover:text-ghost-green transition-colors">
@@ -2370,9 +197,7 @@ function SamplePackContentView({
             <div className="flex-1" />
           </div>
           <div className={`h-[72px] relative overflow-hidden transition-colors ${packDragOver ? 'bg-ghost-green/5' : 'bg-ghost-bg/50'}`}>
-            <div className="absolute inset-0 opacity-10 pointer-events-none">
-              <Waveform seed="samplepack-demo-placeholder" height={72} />
-            </div>
+            <div className="absolute inset-0 opacity-10 pointer-events-none"><Waveform seed="samplepack-demo-placeholder" height={72} /></div>
             <div className="absolute inset-0 flex items-center gap-3 pl-8 pr-5">
               {packUploading ? (
                 <span className="text-[13px] text-ghost-green animate-pulse">{packStatus}</span>
@@ -2380,19 +205,10 @@ function SamplePackContentView({
                 <span className="text-[13px] text-ghost-green">{packStatus}</span>
               ) : (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={packDragOver ? '#00FFC8' : 'rgba(255,255,255,0.4)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}>
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={packDragOver ? '#00FFC8' : 'rgba(255,255,255,0.4)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                   <span className={`text-[13px] font-bold uppercase tracking-wide ml-2 ${packDragOver ? 'text-ghost-green' : 'text-purple-300'}`} style={{ textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0px 2px rgba(0,0,0,0.4)' }}>Drag audio files here</span>
                   <div className="flex-1" />
-                  <button
-                    onClick={handlePackBrowse}
-                    className="px-3 py-1.5 text-[11px] font-semibold bg-white/5 border border-white/10 rounded-lg text-ghost-text-secondary hover:text-white hover:bg-white/10 hover:border-white/20 transition-all shrink-0"
-                  >
-                    + Add File
-                  </button>
+                  <button onClick={handlePackBrowse} className="px-3 py-1.5 text-[11px] font-semibold bg-white/5 border border-white/10 rounded-lg text-ghost-text-secondary hover:text-white hover:bg-white/10 hover:border-white/20 transition-all shrink-0">+ Add File</button>
                 </>
               )}
             </div>
@@ -2402,16 +218,7 @@ function SamplePackContentView({
         {/* Sample rows */}
         <div className="space-y-2 mt-2">
           {items.map((sample: any) => (
-            <StemRow
-              key={sample.id}
-              trackId={sample.id}
-              name={sample.name}
-              type="audio"
-              fileId={sample.fileId}
-              projectId={pack.id}
-              onDelete={() => onRemoveSample(pack.id, sample.id)}
-              onRename={() => {}}
-            />
+            <StemRow key={sample.id} trackId={sample.id} name={sample.name} type="audio" fileId={sample.fileId} projectId={pack.id} onDelete={() => onRemoveSample(pack.id, sample.id)} onRename={() => {}} />
           ))}
         </div>
       </div>
@@ -2419,693 +226,7 @@ function SamplePackContentView({
   );
 }
 
-function DropZone({ projectId, onFilesAdded }: { projectId: string; onFilesAdded: () => void }) {
-  const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [status, setStatus] = useState('');
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-
-    const droppedFiles = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith('audio/') || f.name.match(/\.(wav|mp3|flac|aiff|ogg|m4a|aac|stem)$/i)
-    );
-
-    if (droppedFiles.length === 0) {
-      setStatus('No audio files detected');
-      setTimeout(() => setStatus(''), 2000);
-      return;
-    }
-
-    setUploading(true);
-    setStatus(`Uploading ${droppedFiles.length} file(s)...`);
-
-    try {
-      for (const file of droppedFiles) {
-        const { fileId } = await api.uploadFile(projectId, file);
-        const trackName = file.name.replace(/\.[^.]+$/, '');
-        await api.addTrack(projectId, { name: trackName, type: 'audio', fileId, fileName: file.name });
-      }
-      setStatus(`Added ${droppedFiles.length} track(s)`);
-      onFilesAdded();
-    } catch (err: any) {
-      setStatus(err.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      setTimeout(() => setStatus(''), 3000);
-    }
-  };
-
-  const handleBrowse = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'audio/*,.wav,.mp3,.flac,.aiff,.ogg,.m4a,.aac';
-    input.onchange = () => {
-      if (input.files && input.files.length > 0) {
-        const fakeEvent = {
-          preventDefault: () => {},
-          dataTransfer: { files: input.files },
-        } as unknown as React.DragEvent;
-        handleDrop(fakeEvent);
-      }
-    };
-    input.click();
-  };
-
-  return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-      className={`rounded-xl overflow-hidden transition-all ${
-        dragOver ? 'bg-ghost-green/[0.04] border border-ghost-green/30 shadow-glow-green' : 'glass-subtle'
-      }`}
-    >
-      <div className="flex items-center gap-3 px-4 py-2.5">
-        <button className="w-6 h-6 rounded-full bg-white/[0.06] flex items-center justify-center text-ghost-text-muted hover:text-ghost-green hover:bg-ghost-green/10 transition-all">
-          <svg width="8" height="10" viewBox="0 0 10 12" fill="currentColor"><polygon points="0,0 10,6 0,12" /></svg>
-        </button>
-        <span className="text-[12px] font-semibold text-white/50 uppercase tracking-[0.1em]">Stems</span>
-        <div className="flex-1" />
-      </div>
-      <div className={`h-[68px] relative overflow-hidden transition-colors ${dragOver ? 'bg-ghost-green/[0.03]' : 'bg-black/20'}`}>
-        <div className="absolute inset-0 opacity-[0.07] pointer-events-none">
-          <Waveform seed="stems-demo-placeholder" height={68} />
-        </div>
-        <div className="absolute inset-0 flex items-center gap-3 pl-8 pr-5">
-          {uploading ? (
-            <span className="text-[13px] text-ghost-green animate-pulse">{status}</span>
-          ) : status ? (
-            <span className="text-[13px] text-ghost-green">{status}</span>
-          ) : (
-            <>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={dragOver ? '#00FFC8' : 'rgba(255,255,255,0.25)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <span className={`text-[13px] uppercase tracking-wide ml-2 ${dragOver ? 'text-ghost-green font-medium' : 'text-white/30'}`} style={{ textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0px 2px rgba(0,0,0,0.4)' }}>Drop your stems here</span>
-              <div className="flex-1" />
-              <motion.button
-                onClick={handleBrowse}
-                className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-                style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                Upload
-              </motion.button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SocialAudioPlayer({ audioFileId }: { audioFileId: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bufferRef = useRef<AudioBuffer | null>(null);
-  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [waveData, setWaveData] = useState<Float32Array | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const url = `${API_BASE}/social/audio/${audioFileId}`;
-    const token = localStorage.getItem('ghost_token');
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-      .then(buf => {
-        const ctx = new AudioContext();
-        return ctx.decodeAudioData(buf.slice(0)).then(decoded => { ctx.close(); return decoded; });
-      })
-      .then(decoded => {
-        if (cancelled) return;
-        bufferRef.current = decoded;
-        setWaveData(decoded.getChannelData(0));
-        setReady(true);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [audioFileId]);
-
-  // Draw waveform
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container || !waveData) return;
-    const draw = () => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (w === 0 || h === 0) return;
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      const ctx = canvas.getContext('2d')!;
-      ctx.scale(dpr, dpr);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, w, h);
-      const mid = h / 2;
-      const spp = waveData.length / w;
-      for (let x = 0; x < w; x++) {
-        const t = x / w;
-        const r = Math.round(0x00 + (0x8B - 0x00) * t);
-        const g = Math.round(0xFF + (0x5C - 0xFF) * t);
-        const b = Math.round(0xC8 + (0xF6 - 0xC8) * t);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        let max = 0;
-        const start = Math.floor(x * spp);
-        const end = Math.min(Math.floor((x + 1) * spp), waveData.length);
-        for (let j = start; j < end; j++) { const abs = Math.abs(waveData[j]); if (abs > max) max = abs; }
-        const peakH = max * mid * 0.84;
-        if (peakH > 0.5) ctx.fillRect(x, mid - peakH, 1, peakH * 2);
-      }
-    };
-    draw();
-    const obs = new ResizeObserver(draw);
-    obs.observe(container);
-    return () => obs.disconnect();
-  }, [waveData]);
-
-  const handlePlay = () => {
-    if (isPlaying && sourceRef.current) {
-      try { sourceRef.current.stop(); } catch {}
-      sourceRef.current = null;
-      setIsPlaying(false);
-      return;
-    }
-    if (!bufferRef.current) return;
-    if (!ctxRef.current) ctxRef.current = new AudioContext();
-    const ctx = ctxRef.current;
-    if (ctx.state === 'suspended') ctx.resume();
-    const source = ctx.createBufferSource();
-    source.buffer = bufferRef.current;
-    source.connect(ctx.destination);
-    source.onended = () => { setIsPlaying(false); sourceRef.current = null; };
-    source.start(0);
-    sourceRef.current = source;
-    setIsPlaying(true);
-  };
-
-  return (
-    <div className="rounded-xl border border-white/10 overflow-hidden flex items-center h-[60px] bg-[#0a0a14]">
-      <button
-        onClick={handlePlay}
-        disabled={!ready}
-        className={`w-12 h-full flex items-center justify-center shrink-0 border-r border-purple-500/20 transition-colors ${
-          isPlaying ? 'bg-purple-500/20 text-purple-300' : ready ? 'hover:bg-purple-500/10 text-purple-400' : 'text-white/20'
-        }`}
-      >
-        {isPlaying ? (
-          <svg width="12" height="12" viewBox="0 0 12 14" fill="currentColor"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
-        ) : (
-          <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><polygon points="0,0 10,6 0,12" /></svg>
-        )}
-      </button>
-      <div ref={containerRef} className="flex-1 h-full overflow-hidden">
-        <canvas ref={canvasRef} style={{ display: 'block' }} />
-      </div>
-    </div>
-  );
-}
-
-function SocialFeed({ user, friends }: { user: any; friends: any[] }) {
-  const [tab, setTab] = useState<'feed' | 'explore' | 'activity'>('feed');
-  const [posts, setPosts] = useState<any[]>([]);
-  const [newPost, setNewPost] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [dropFile, setDropFile] = useState<File | null>(null);
-  const [dropDragOver, setDropDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [exploreUsers, setExploreUsers] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
-  const [profileUser, setProfileUser] = useState<any>(null);
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
-  const [commentTexts, setCommentTexts] = useState<Record<string, string>>({});
-  const [postComments, setPostComments] = useState<Record<string, any[]>>({});
-  const authHeader = { Authorization: `Bearer ${localStorage.getItem('ghost_token')}` };
-  const BASE = `${API_BASE}/social`;
-
-  const loadFeed = () => { setLoading(true); fetch(`${BASE}/feed`, { headers: authHeader }).then(r => r.json()).then(d => { if (d.data) setPosts(d.data); }).catch(() => {}).finally(() => setLoading(false)); };
-  useEffect(() => { loadFeed(); }, []);
-  const loadExplore = () => { fetch(`${BASE}/explore`, { headers: authHeader }).then(r => r.json()).then(d => { if (d.data) setExploreUsers(d.data); }).catch(() => {}); };
-  const loadActivity = () => { fetch(`${BASE}/activity`, { headers: authHeader }).then(r => r.json()).then(d => { if (d.data) setActivities(d.data); }).catch(() => {}); };
-  const loadProfile = (userId: string) => { fetch(`${BASE}/profile/${userId}`, { headers: authHeader }).then(r => r.json()).then(d => { if (d.data) setProfileUser(d.data); }).catch(() => {}); };
-
-  const handlePost = async () => {
-    if (!newPost.trim() && !dropFile) return;
-    setUploading(true);
-    try {
-      let audioUrl = null;
-      let fileName = null;
-      if (dropFile) {
-        // Upload the file to a temporary "shared" project
-        const formData = new FormData();
-        formData.append('file', dropFile);
-        // Use a special shared uploads endpoint or reuse existing
-        const uploadRes = await fetch(`${API_BASE}/social/upload`, {
-          method: 'POST', headers: authHeader, body: formData,
-        });
-        const uploadData = await uploadRes.json();
-        if (uploadData.data) {
-          audioUrl = uploadData.data.fileId;
-          fileName = dropFile.name;
-        }
-      }
-      const text = newPost.trim() || (fileName ? `🎵 ${fileName.replace(/\.[^.]+$/, '')}` : '');
-      const res = await fetch(`${BASE}/posts`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify({ text, audioFileId: audioUrl }),
-      });
-      const d = await res.json();
-      if (d.data) { if (fileName) d.data.audioFileName = fileName; setPosts(prev => [d.data, ...prev]); }
-      setNewPost(''); setDropFile(null);
-    } catch {}
-    setUploading(false);
-  };
-  const toggleLike = async (postId: string) => {
-    await fetch(`${BASE}/posts/${postId}/like`, { method: 'POST', headers: authHeader });
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked: !p.liked, likeCount: p.liked ? p.likeCount - 1 : p.likeCount + 1 } : p));
-  };
-  const addReaction = async (postId: string, emoji: string) => {
-    const res = await fetch(`${BASE}/posts/${postId}/reactions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader }, body: JSON.stringify({ emoji }) });
-    const d = await res.json();
-    if (d.data) setPosts(prev => prev.map(p => { if (p.id !== postId) return p; const rc = { ...p.reactionCounts }; const ur = [...(p.userReactions || [])]; if (d.data.reacted) { rc[emoji] = (rc[emoji] || 0) + 1; ur.push(emoji); } else { rc[emoji] = Math.max(0, (rc[emoji] || 0) - 1); if (!rc[emoji]) delete rc[emoji]; const i = ur.indexOf(emoji); if (i >= 0) ur.splice(i, 1); } return { ...p, reactionCounts: rc, userReactions: ur }; }));
-  };
-  const toggleFollow = async (userId: string) => {
-    const res = await fetch(`${BASE}/follow/${userId}`, { method: 'POST', headers: authHeader }); const d = await res.json();
-    if (d.data) { setExploreUsers(prev => prev.map(u => u.id === userId ? { ...u, isFollowing: d.data.following } : u)); if (profileUser?.id === userId) setProfileUser({ ...profileUser, isFollowing: d.data.following }); }
-  };
-  const toggleComments = async (postId: string) => {
-    const next = new Set(expandedComments); if (next.has(postId)) { next.delete(postId); } else { next.add(postId); if (!postComments[postId]) { const res = await fetch(`${BASE}/posts/${postId}/comments`, { headers: authHeader }); const d = await res.json(); if (d.data) setPostComments(prev => ({ ...prev, [postId]: d.data })); } } setExpandedComments(next);
-  };
-  const submitComment = async (postId: string) => {
-    const text = commentTexts[postId]?.trim(); if (!text) return;
-    const res = await fetch(`${BASE}/posts/${postId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader }, body: JSON.stringify({ text }) });
-    const d = await res.json(); if (d.data) { setPostComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), d.data] })); setCommentTexts(prev => ({ ...prev, [postId]: '' })); setPosts(prev => prev.map(p => p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p)); }
-  };
-
-  const REACTIONS = ['❤️', '🔥'];
-
-  const renderPost = (post: any) => (
-    <div key={post.id} className="bg-[#1a1a2e]/80 rounded-2xl border border-white/5 p-4 hover:border-white/10 transition-all">
-      {/* Author row */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="cursor-pointer hover:scale-105 transition-transform" onClick={() => { setProfileUser(null); loadProfile(post.userId); }}>
-          <Avatar name={post.displayName || '?'} src={post.avatarUrl} size="md" />
-        </div>
-        <div className="flex-1">
-          <span className="text-[15px] font-bold text-white cursor-pointer hover:text-purple-400 transition-colors" onClick={() => { setProfileUser(null); loadProfile(post.userId); }}>{post.displayName}</span>
-          <p className="text-[12px] text-white/30">{new Date(post.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</p>
-        </div>
-      </div>
-
-      {/* Post text */}
-      <p className="text-[15px] text-white/85 leading-relaxed whitespace-pre-wrap">{post.text}</p>
-
-      {/* Audio waveform */}
-      {post.audioFileId && (
-        <div className="mt-4 rounded-xl overflow-hidden">
-          <SocialAudioPlayer audioFileId={post.audioFileId} />
-        </div>
-      )}
-
-      {/* Shared project card */}
-      {post.projectName && (
-        <div className="mt-4 bg-gradient-to-r from-purple-500/10 to-transparent rounded-xl border border-purple-500/20 p-4 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B794F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-bold text-white truncate">{post.projectName}</p>
-            <p className="text-[12px] text-purple-300/50">Shared project</p>
-          </div>
-        </div>
-      )}
-
-      {/* Action bar */}
-      <div className="flex items-center gap-1 mt-3 pt-3 border-t border-white/5">
-        <button onClick={() => toggleLike(post.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all hover:bg-white/5 ${post.liked ? 'text-red-400' : 'text-white/40 hover:text-red-400'}`}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill={post.liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-          {post.likeCount > 0 ? post.likeCount : 'Like'}
-        </button>
-        <button onClick={() => addReaction(post.id, '🔥')} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all hover:bg-white/5 ${post.userReactions?.includes('🔥') ? 'text-orange-400' : 'text-white/40 hover:text-orange-400'}`}>
-          🔥 {(post.reactionCounts?.['🔥'] || 0) > 0 ? post.reactionCounts['🔥'] : ''}
-        </button>
-        <button onClick={() => toggleComments(post.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all hover:bg-white/5 ${expandedComments.has(post.id) ? 'text-purple-400' : 'text-white/40 hover:text-purple-400'}`}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-          {post.commentCount > 0 ? post.commentCount : 'Comment'}
-        </button>
-      </div>
-
-      {/* Comments section */}
-      {expandedComments.has(post.id) && (
-        <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
-          {(postComments[post.id] || []).map((c: any) => (
-            <div key={c.id} className="flex gap-2.5">
-              <Avatar name={c.displayName || '?'} src={c.avatarUrl} size="sm" />
-              <div className="bg-white/5 rounded-xl px-3.5 py-2.5 flex-1">
-                <span className="text-[12px] font-bold text-white">{c.displayName}</span>
-                <p className="text-[13px] text-white/70 mt-0.5">{c.text}</p>
-              </div>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <input value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts(prev => ({ ...prev, [post.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') submitComment(post.id); }} placeholder="Write a comment..." className="flex-1 bg-white/5 rounded-xl px-4 py-2.5 text-[13px] text-white placeholder:text-white/25 outline-none border border-white/5 focus:border-purple-500/30 transition-colors" />
-            <button onClick={() => submitComment(post.id)} className="px-4 py-2 rounded-xl text-[12px] font-bold bg-purple-500 text-white hover:bg-purple-400 transition-colors">Send</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  if (profileUser) return (
-    <div className="flex-1 flex flex-col min-h-0"><div className="flex-1 overflow-y-auto px-6 pt-6 pb-4">
-      <button onClick={() => setProfileUser(null)} className="text-[13px] text-purple-400 hover:text-purple-300 mb-4 flex items-center gap-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6" /></svg>Back</button>
-      <div className="bg-ghost-surface rounded-xl border border-ghost-border/30 p-6 mb-6">
-        <div className="flex items-center gap-4">
-          <Avatar name={profileUser.displayName} src={profileUser.avatarUrl} size="lg" />
-          <div className="flex-1"><h2 className="text-xl font-bold text-white">{profileUser.displayName}</h2><p className="text-[12px] text-white/40 mt-0.5">Joined {new Date(profileUser.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-            <div className="flex gap-4 mt-2 text-[13px]"><span className="text-white/60"><span className="font-bold text-white">{profileUser.followerCount}</span> followers</span><span className="text-white/60"><span className="font-bold text-white">{profileUser.followingCount}</span> following</span><span className="text-white/60"><span className="font-bold text-white">{profileUser.postCount}</span> posts</span></div>
-          </div>
-          {profileUser.id !== user?.id && <button onClick={() => toggleFollow(profileUser.id)} className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-colors ${profileUser.isFollowing ? 'bg-white/10 text-white hover:bg-red-500/20 hover:text-red-400' : 'bg-purple-500 text-white hover:bg-purple-600'}`}>{profileUser.isFollowing ? 'Unfollow' : 'Follow'}</button>}
-        </div>
-      </div>
-      <h3 className="text-[14px] font-bold text-white/50 uppercase tracking-wider mb-3">Posts</h3>
-      <div className="space-y-4">{(profileUser.posts || []).map(renderPost)}{(!profileUser.posts || profileUser.posts.length === 0) && <p className="text-[13px] text-white/30 italic text-center py-8">No posts yet</p>}</div>
-    </div></div>
-  );
-
-  return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex gap-2 px-6 pt-3 pb-2">{(['feed', 'explore', 'activity'] as const).map(t => (
-        <button key={t} onClick={() => { setTab(t); if (t === 'explore') loadExplore(); if (t === 'activity') loadActivity(); }}
-          className={`px-5 py-2 rounded-xl text-[14px] font-bold transition-all capitalize ${tab === t ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-[0_0_10px_rgba(139,92,246,0.1)]' : 'text-white/35 hover:text-white/60 hover:bg-white/5 border border-transparent'}`}>{t}</button>
-      ))}</div>
-      <div className="flex-1 overflow-y-auto px-5 pt-2 pb-3">
-        {tab === 'feed' && (<>
-          <div
-            className={`bg-ghost-surface/60 rounded-xl border px-4 py-3 mb-4 transition-all ${dropDragOver ? 'border-purple-400/60 bg-purple-500/5' : 'border-white/[0.06]'}`}
-            onDragOver={(e) => { e.preventDefault(); setDropDragOver(true); }}
-            onDragLeave={() => setDropDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault(); setDropDragOver(false);
-              const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('audio/') || f.name.match(/\.(wav|mp3|flac|aiff|ogg|m4a)$/i));
-              if (file) setDropFile(file);
-            }}
-          ><div className="flex items-start gap-3"><Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="md" /><div className="flex-1">
-            <textarea value={newPost} onChange={(e) => setNewPost(e.target.value)} placeholder="What are you working on?" className="w-full bg-transparent text-[14px] text-white placeholder:text-white/30 outline-none resize-none min-h-[36px]" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePost(); } }} />
-            {dropFile && (
-              <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B794F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
-                <span className="text-[13px] text-purple-300 flex-1 truncate">{dropFile.name}</span>
-                <button onClick={() => setDropFile(null)} className="text-white/30 hover:text-white text-xs">X</button>
-              </div>
-            )}
-            {!dropFile && (
-              <p className="text-[16px] text-white/30 mt-1 font-medium">Drag & drop a sample or beat to share</p>
-            )}
-            <div className="flex justify-end mt-2"><button onClick={handlePost} disabled={(!newPost.trim() && !dropFile) || uploading} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">{uploading ? 'Uploading...' : 'Post'}</button></div>
-          </div></div></div>
-          {loading ? <div className="text-center text-white/30 py-12">Loading...</div> : posts.length === 0 ? (
-            <div className="text-center py-16"><div className="w-16 h-16 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-4"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B794F6" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg></div><p className="text-[16px] text-white font-semibold">No posts yet</p><p className="text-[13px] text-white/40 mt-1">Share what you're working on</p></div>
-          ) : <div className="space-y-3">{posts.map(renderPost)}</div>}
-        </>)}
-        {tab === 'explore' && (<div className="space-y-3"><p className="text-[13px] text-white/40 mb-4">Discover producers</p>{exploreUsers.map(u => (
-          <div key={u.id} className="bg-ghost-surface rounded-xl border border-ghost-border/30 p-4 flex items-center gap-4">
-            <div className="cursor-pointer" onClick={() => loadProfile(u.id)}><Avatar name={u.displayName} src={u.avatarUrl} size="md" /></div>
-            <div className="flex-1 min-w-0"><span className="text-[14px] font-semibold text-white cursor-pointer hover:text-purple-400 transition-colors" onClick={() => loadProfile(u.id)}>{u.displayName}</span><p className="text-[12px] text-white/30">{u.followerCount} followers &middot; {u.postCount} posts</p></div>
-            <button onClick={() => toggleFollow(u.id)} className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${u.isFollowing ? 'bg-white/10 text-white hover:bg-red-500/20 hover:text-red-400' : 'bg-purple-500 text-white hover:bg-purple-600'}`}>{u.isFollowing ? 'Following' : 'Follow'}</button>
-          </div>
-        ))}{exploreUsers.length === 0 && <p className="text-center text-white/30 py-12 italic">No users to discover</p>}</div>)}
-        {tab === 'activity' && (<div className="space-y-2"><p className="text-[13px] text-white/40 mb-4">Recent activity</p>{activities.map((a, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3 bg-ghost-surface rounded-lg border border-ghost-border/30">
-            <Avatar name={a.displayName || '?'} src={a.avatarUrl} size="sm" />
-            <div className="flex-1 min-w-0"><p className="text-[13px] text-white/80"><span className="font-semibold text-white">{a.displayName}</span> {a.message}</p><p className="text-[11px] text-white/30">{new Date(a.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</p></div>
-            {a.type === 'upload' && <span className="text-[10px] font-bold text-ghost-green bg-ghost-green/10 px-2 py-0.5 rounded uppercase">Upload</span>}
-          </div>
-        ))}{activities.length === 0 && <p className="text-center text-white/30 py-12 italic">No recent activity</p>}</div>)}
-      </div>
-    </div>
-  );
-}
-
-function TrackWithWidth({ track, selectedProjectId, deleteTrack, updateTrack, trackZoom, fetchProject }: { track: any; selectedProjectId: string; deleteTrack: any; updateTrack: any; trackZoom: 'full' | 'half'; fetchProject: any }) {
-  const trackBuffer = useAudioStore((s) => s.loadedTracks.get(track.id)?.buffer);
-  const maxDur = useAudioStore((s) => s.duration);
-  const bufferVersion = useAudioStore((s) => s.bufferVersion);
-  const trackDur = trackBuffer?.duration || 0;
-  const widthPct = maxDur > 0 && trackDur > 0 ? (trackDur / maxDur) * 100 : 100;
-
-  return (
-    <StemRow
-      key={`${track.id}-${bufferVersion}`}
-      trackId={track.id}
-      name={track.name || track.fileName || 'Track'}
-      type={track.type || 'audio'}
-      fileId={track.fileId}
-      projectId={selectedProjectId}
-      createdAt={track.createdAt}
-      onDelete={() => { useAudioStore.getState().removeTrack(track.id); deleteTrack(selectedProjectId, track.id); }}
-      onRename={(newName) => updateTrack(selectedProjectId, track.id, { name: newName })}
-      compact={trackZoom === 'half'}
-      widthPercent={widthPct}
-    />
-  );
-}
-
-function ArrangementDropZone({ projectId, onFilesAdded, children }: { projectId: string; onFilesAdded: () => void; children: React.ReactNode }) {
-  const [dragOver, setDragOver] = useState(false);
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith('audio/') || f.name.match(/\.(wav|mp3|flac|aiff|ogg|m4a|aac)$/i)
-    );
-    if (droppedFiles.length === 0) return;
-    for (const file of droppedFiles) {
-      const { fileId } = await api.uploadFile(projectId, file);
-      const trackName = file.name.replace(/\.[^.]+$/, '');
-      await api.addTrack(projectId, { name: trackName, type: 'fullmix', fileId, fileName: file.name } as any);
-    }
-    onFilesAdded();
-  };
-
-  return (
-    <div
-      className={`relative transition-all ${dragOver ? 'ring-2 ring-ghost-green/50 ring-inset' : ''}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-    >
-      {children}
-      {dragOver && (
-        <div className="absolute inset-0 bg-ghost-green/5 pointer-events-none z-30 rounded-xl" />
-      )}
-    </div>
-  );
-}
-
-function BarRuler() {
-  const { duration, projectBpm, seekTo } = useAudioStore();
-  const rulerRef = useRef<HTMLDivElement>(null);
-  const [rulerWidth, setRulerWidth] = useState(800);
-
-  const bpm = projectBpm > 0 ? projectBpm : 120;
-  const secondsPerBar = (60 / bpm) * 4;
-  const totalBars = duration > 0 ? Math.max(8, Math.ceil(duration / secondsPerBar)) : 8;
-
-  // Measure ruler width to determine label density
-  useEffect(() => {
-    if (!rulerRef.current) return;
-    const obs = new ResizeObserver((entries) => {
-      for (const e of entries) setRulerWidth(e.contentRect.width);
-    });
-    obs.observe(rulerRef.current);
-    return () => obs.disconnect();
-  }, []);
-
-  // Calculate pixels per bar and determine label interval (like Ableton)
-  const pxPerBar = rulerWidth / totalBars;
-  const minPxPerLabel = 28; // minimum pixels between labels
-  let labelEvery = 1;
-  for (const step of [1, 2, 4, 8, 16, 32, 64]) {
-    if (pxPerBar * step >= minPxPerLabel) { labelEvery = step; break; }
-  }
-
-  const handleClick = (e: React.MouseEvent) => {
-    if (!rulerRef.current || duration <= 0) return;
-    const rect = rulerRef.current.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    seekTo(pct * duration);
-  };
-
-  return (
-    <div
-      ref={rulerRef}
-      className="h-7 flex relative cursor-pointer select-none shrink-0 sticky top-0 z-30"
-      style={{ background: 'rgba(10,4,18,0.95)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
-      onClick={handleClick}
-    >
-      {Array.from({ length: totalBars }).map((_, i) => {
-        const leftPct = duration > 0 ? (i * secondsPerBar / duration) * 100 : (i / totalBars) * 100;
-        const showLabel = i % labelEvery === 0;
-        return (
-          <div key={i} className="absolute top-0 bottom-0" style={{ left: `${leftPct}%` }}>
-            <div className={`absolute top-0 w-px ${showLabel ? 'bottom-0 bg-white/[0.12]' : 'h-2 bg-white/[0.06]'}`} />
-            {showLabel && (
-              <span className="text-[9px] font-mono text-white/35 pl-1 leading-7 select-none whitespace-nowrap">{i + 1}</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function BarGridOverlay() {
-  const { duration, projectBpm } = useAudioStore();
-  const bpm = projectBpm > 0 ? projectBpm : 120;
-  const secondsPerBar = (60 / bpm) * 4;
-  const totalBars = duration > 0 ? Math.max(8, Math.ceil(duration / secondsPerBar)) : 8;
-
-  if (totalBars === 0) return null;
-
-  return (
-    <div className="absolute inset-0 pointer-events-none z-10">
-      {Array.from({ length: totalBars }).map((_, i) => {
-        const leftPct = (i * secondsPerBar / duration) * 100;
-        return (
-          <div key={i} className="absolute top-0 bottom-0 w-px bg-white/[0.06]" style={{ left: `${leftPct}%` }} />
-        );
-      })}
-    </div>
-  );
-}
-
-function ArrangementPlayhead() {
-  const { currentTime, duration, isPlaying } = useAudioStore();
-  const playheadRef = useRef<HTMLDivElement>(null);
-
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  if (!isPlaying && currentTime === 0) return null;
-
-  return (
-    <div
-      ref={playheadRef}
-      className="absolute top-0 bottom-0 w-[2px] pointer-events-none z-20"
-      style={{
-        left: `${Math.min(pct, 100)}%`,
-        background: 'rgba(255,255,255,0.8)',
-        boxShadow: '0 0 6px rgba(255,255,255,0.4), 0 0 12px rgba(255,255,255,0.1)',
-      }}
-    >
-      <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white" style={{ boxShadow: '0 0 4px rgba(255,255,255,0.6)' }} />
-    </div>
-  );
-}
-
-function PresenceFriendsList({ friends, onlineActivity, selectProject }: { friends: any[]; onlineActivity: Map<string, OnlineUser>; selectProject: (id: string) => void }) {
-  const defaultFriends = [
-    { id: 'demo1', displayName: 'Alex Beats', avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg' },
-    { id: 'demo2', displayName: 'Jay Producer', avatarUrl: 'https://randomuser.me/api/portraits/men/75.jpg' },
-    { id: 'demo3', displayName: 'Kira Wave', avatarUrl: 'https://randomuser.me/api/portraits/women/44.jpg' },
-    { id: 'demo4', displayName: 'Rio Sound', avatarUrl: 'https://randomuser.me/api/portraits/men/85.jpg' },
-  ];
-  const sourceFriends = friends.length > 0 ? friends : defaultFriends;
-
-  const [orderedIds, setOrderedIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('ghost_friend_order');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return sourceFriends.map((f: any) => f.id);
-  });
-
-  // Sync order when friends list changes
-  useEffect(() => {
-    const ids = sourceFriends.map((f: any) => f.id);
-    setOrderedIds(prev => {
-      const existing = prev.filter(id => ids.includes(id));
-      const newIds = ids.filter(id => !prev.includes(id));
-      return [...existing, ...newIds];
-    });
-  }, [sourceFriends.length]);
-
-  const orderedFriends = orderedIds
-    .map(id => sourceFriends.find((f: any) => f.id === id))
-    .filter(Boolean) as any[];
-
-  const handleReorder = (newOrder: string[]) => {
-    setOrderedIds(newOrder);
-    localStorage.setItem('ghost_friend_order', JSON.stringify(newOrder));
-  };
-
-  return (
-    <Reorder.Group axis="y" values={orderedIds} onReorder={handleReorder} className="flex flex-col items-center gap-4" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-      {orderedFriends.map((f) => {
-        const activity = onlineActivity.get(f.id);
-        const isOnline = !!activity;
-        const projectName = activity?.currentProjectName;
-        const projectId = activity?.currentProjectId;
-        return (
-          <Reorder.Item key={f.id} value={f.id} className="relative group cursor-grab active:cursor-grabbing" style={{ listStyle: 'none' }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-            whileDrag={{ scale: 1.15, zIndex: 50 }}
-          >
-            <div onClick={() => { if (projectId) selectProject(projectId); }}>
-              <div className="rounded-full p-[2px] transition-all overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] group-hover:shadow-[0_0_12px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3)]"
-                style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-              >
-                <div className="rounded-full overflow-hidden">
-                  <Avatar name={f.displayName} src={f.avatarUrl} size="md" />
-                </div>
-              </div>
-              {isOnline ? (
-                <motion.span
-                  className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#0A0412] bg-ghost-online-green"
-                  animate={{ scale: [1, 1.3, 1], boxShadow: ['0 0 0px rgba(34,197,94,0)', '0 0 8px rgba(34,197,94,0.6)', '0 0 0px rgba(34,197,94,0)'] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                />
-              ) : (
-                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#0A0412]" style={{ background: 'transparent', boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.2)' }} />
-              )}
-            </div>
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
-              <div className="px-3 py-1.5 rounded-lg text-[11px]" style={{ background: 'rgba(20,10,35,0.97)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(12px)' }}>
-                <div className="font-semibold text-white">{f.displayName}</div>
-                {projectName ? (
-                  <div className="text-ghost-green mt-0.5">Working on: {projectName}</div>
-                ) : isOnline ? (
-                  <div className="text-white/40 mt-0.5">Online</div>
-                ) : (
-                  <div className="text-white/30 mt-0.5">Offline</div>
-                )}
-              </div>
-            </div>
-          </Reorder.Item>
-        );
-      })}
-    </Reorder.Group>
-  );
-}
+// ── Main Layout ──
 
 export default function PluginLayout() {
   const { user, logout } = useAuthStore();
@@ -3117,50 +238,17 @@ export default function PluginLayout() {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [videoGridHidden, setVideoGridHidden] = useState(true);
-  const prevViewRef = useRef<{ projectId: string | null; packId: string | null }>({ projectId: null, packId: null });
   const [shareStatus, setShareStatus] = useState('');
   const [isBeatView, setIsBeatView] = useState(false);
-
-  const handleCreateBeat = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ghost_token')}` },
-        body: JSON.stringify({ name: 'Untitled', projectType: 'beat' }),
-      });
-      const d = await res.json();
-      if (d.data) {
-        await fetchProjects();
-        selectProject(d.data.id);
-      }
-    } catch {}
-  };
   const [showSettings, setShowSettings] = useState(false);
   const [trackZoom, setTrackZoom] = useState<'full' | 'half'>('full');
   const [headerSpeaking, setHeaderSpeaking] = useState(false);
-
-  // Poll speaking state from VideoGrid
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setHeaderSpeaking(!!(window as any).__ghostSpeaking);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
-
   const [onlineActivity, setOnlineActivity] = useState<Map<string, OnlineUser>>(new Map());
-  useEffect(() => {
-    onGlobalOnlineUsers((users) => {
-      const map = new Map<string, OnlineUser>();
-      users.forEach(u => map.set(u.userId, u));
-      setOnlineActivity(map);
-    });
-  }, []);
-
   const [showNotifs, setShowNotifs] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showFriendSearch, setShowFriendSearch] = useState(false);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
-  const [friendSearchResults, setFriendSearchResults] = useState<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>([]);
+  const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
   const friendSearchRef = useRef<HTMLDivElement>(null);
   const friendSearchInputRef = useRef<HTMLInputElement>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -3169,7 +257,6 @@ export default function PluginLayout() {
   const [samplePacks, setSamplePacks] = useState<SamplePack[]>([]);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [selectedPack, setSelectedPack] = useState<(SamplePack & { items?: any[] }) | null>(null);
-  const fullMixTracks = currentProject?.tracks.filter((t: any) => t.type === 'fullmix') || [];
   const [editingField, setEditingField] = useState<'name' | 'tempo' | 'key' | 'genre' | 'timeSig' | null>(null);
   const [projectTimeSig, setProjectTimeSig] = useState('4/4');
   const [editValue, setEditValue] = useState('');
@@ -3184,19 +271,23 @@ export default function PluginLayout() {
   const bpmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchSamplePacks = async () => {
-    try {
-      const packs = await api.listSamplePacks();
-      setSamplePacks(packs.map((p: any) => ({ id: p.id, name: p.name, samples: [], updatedAt: p.updatedAt })));
-    } catch {}
-  };
+  const audioCleanup = useAudioStore((s) => s.cleanup);
+  const members = currentProject?.members || [];
 
-  const fetchNotifications = async () => {
-    try {
-      const notifs = await api.getNotifications();
-      setChatNotifications(notifs);
-    } catch {}
-  };
+  // ── Effects ──
+
+  useEffect(() => {
+    const interval = setInterval(() => { setHeaderSpeaking(!!(window as any).__ghostSpeaking); }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    onGlobalOnlineUsers((users) => {
+      const map = new Map<string, OnlineUser>();
+      users.forEach(u => map.set(u.userId, u));
+      setOnlineActivity(map);
+    });
+  }, []);
 
   useEffect(() => {
     fetchProjects();
@@ -3204,25 +295,16 @@ export default function PluginLayout() {
     fetchNotifications();
     fetchSamplePacks();
     api.listUsers().then(setFriends).catch(() => {});
-    const pollInterval = setInterval(() => {
-      fetchInvitations();
-      fetchNotifications();
-    }, 10000);
+    const pollInterval = setInterval(() => { fetchInvitations(); fetchNotifications(); }, 10000);
     return () => clearInterval(pollInterval);
   }, []);
 
-  // Real-time polling: refresh project data every 3 seconds
   useEffect(() => {
     if (!selectedProjectId) return;
-    const poll = setInterval(() => {
-      fetchProject(selectedProjectId);
-      fetchVersions(selectedProjectId);
-      fetchNotifications();
-    }, 3000);
+    const poll = setInterval(() => { fetchProject(selectedProjectId); fetchVersions(selectedProjectId); fetchNotifications(); }, 3000);
     return () => clearInterval(poll);
   }, [selectedProjectId]);
 
-  // Sync project name local state
   useEffect(() => {
     if (currentProject) {
       setProjectName(currentProject.name);
@@ -3232,38 +314,58 @@ export default function PluginLayout() {
     }
   }, [currentProject?.id, currentProject?.name]);
 
-  // Friend search — debounced query against user list
   useEffect(() => {
     if (!friendSearchQuery.trim()) { setFriendSearchResults([]); return; }
     const q = friendSearchQuery.toLowerCase();
-    const matches = friends.filter(
-      (f) => f.displayName.toLowerCase().includes(q) || (f as any).email?.toLowerCase().includes(q)
-    );
+    const matches = friends.filter((f) => f.displayName.toLowerCase().includes(q) || (f as any).email?.toLowerCase().includes(q));
     if (matches.length > 0) { setFriendSearchResults(matches as any); return; }
-    // Fallback: search all users from API
     const timer = setTimeout(() => {
-      api.listUsers().then((users) => {
-        const filtered = users.filter(
-          (u) => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-        );
-        setFriendSearchResults(filtered);
-      }).catch(() => {});
+      api.listUsers().then((users) => { setFriendSearchResults(users.filter((u) => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))); }).catch(() => {});
     }, 300);
     return () => clearTimeout(timer);
   }, [friendSearchQuery, friends]);
 
-  // Auto-select first project
   useEffect(() => {
-    if (!selectedProjectId && projects.length > 0) {
-      selectProject(projects[0].id);
-    }
+    if (!selectedProjectId && projects.length > 0) selectProject(projects[0].id);
   }, [projects]);
 
-  const audioCleanup = useAudioStore((s) => s.cleanup);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (projectMenuRef.current && !projectMenuRef.current.contains(target)) {
+        const portalMenu = document.querySelector('[data-project-menu-portal]');
+        if (portalMenu && portalMenu.contains(target)) return;
+        setShowProjectMenu(false);
+      }
+    };
+    if (showProjectMenu) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showProjectMenu]);
+
+  // ── Handlers ──
+
+  const fetchSamplePacks = async () => { try { const packs = await api.listSamplePacks(); setSamplePacks(packs.map((p: any) => ({ id: p.id, name: p.name, samples: [], updatedAt: p.updatedAt }))); } catch {} };
+  const fetchNotifications = async () => { try { const notifs = await api.getNotifications(); setChatNotifications(notifs); } catch {} };
+  const fetchPackDetail = async (id: string) => { try { const detail = await api.getSamplePack(id); setSelectedPack(detail); } catch {} };
+
+  const fetchInvitations = async () => {
+    try {
+      const res = await fetch(API_BASE + '/invitations', { headers: { Authorization: `Bearer ${useAuthStore.getState().token}` } });
+      const json = await res.json();
+      if (json.data) setInvitations(json.data);
+    } catch {}
+  };
+
+  const acceptInvite = async (id: string) => {
+    try { await fetch(API_BASE + `/invitations/${id}/accept`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }); fetchInvitations(); fetchProjects(); } catch {}
+  };
+
+  const declineInvite = async (id: string) => {
+    try { await fetch(API_BASE + `/invitations/${id}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }); fetchInvitations(); } catch {}
+  };
 
   const selectProject = async (id: string) => {
     if (selectedProjectId) { leave(); audioCleanup(); }
-    // Handle "New Beat" — create a new project for the beat
     if (id === '__beats__') {
       const p = await createProject({ name: 'Untitled', projectType: 'beat' } as any);
       await fetchProjects();
@@ -3285,614 +387,266 @@ export default function PluginLayout() {
     join(id);
   };
 
-  const handleRevert = async (versionId: string) => {
-    if (!selectedProjectId || reverting) return;
-    setReverting(true);
+  const handleCreateBeat = async () => {
     try {
-      await api.revertToVersion(selectedProjectId, versionId);
-      await fetchProject(selectedProjectId);
-      await fetchVersions(selectedProjectId);
-    } catch (err: any) {
-      console.error('Revert failed:', err);
-    } finally {
-      setReverting(false);
-    }
+      const res = await fetch(`${API_BASE}/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ghost_token')}` }, body: JSON.stringify({ name: 'Untitled', projectType: 'beat' }) });
+      const d = await res.json();
+      if (d.data) { await fetchProjects(); selectProject(d.data.id); }
+    } catch {}
   };
 
-  // Close project menu on click outside
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (projectMenuRef.current && !projectMenuRef.current.contains(target)) {
-        const portalMenu = document.querySelector('[data-project-menu-portal]');
-        if (portalMenu && portalMenu.contains(target)) return;
-        setShowProjectMenu(false);
-      }
-    };
-    if (showProjectMenu) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showProjectMenu]);
+  const handleCreate = async () => { const p = await createProject({ name: 'Untitled' }); await fetchProjects(); selectProject(p.id); };
+  const handleRevert = async (versionId: string) => { if (!selectedProjectId || reverting) return; setReverting(true); try { await api.revertToVersion(selectedProjectId, versionId); await fetchProject(selectedProjectId); await fetchVersions(selectedProjectId); } catch (err: any) { console.error('Revert failed:', err); } finally { setReverting(false); } };
 
   const handleDeleteProject = async () => {
     if (!selectedProjectId) return;
     if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) return;
-    try {
-      await api.deleteProject(selectedProjectId);
-      leave();
-      audioCleanup();
-      setSelectedProjectId(null);
-      setShowProjectMenu(false);
-      fetchProjects();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete project');
-      setShowProjectMenu(false);
-    }
+    try { await api.deleteProject(selectedProjectId); leave(); audioCleanup(); setSelectedProjectId(null); setShowProjectMenu(false); fetchProjects(); } catch (err: any) { alert(err.message || 'Failed to delete project'); setShowProjectMenu(false); }
   };
 
   const handleLeaveProject = async () => {
     if (!selectedProjectId) return;
     if (!confirm('Leave this project? You will need a new invite to rejoin.')) return;
-    try {
-      await api.leaveProject(selectedProjectId);
-      leave();
-      audioCleanup();
-      setSelectedProjectId(null);
-      setShowProjectMenu(false);
-      fetchProjects();
-    } catch (err: any) {
-      alert(err.message || 'Failed to leave project');
-      setShowProjectMenu(false);
-    }
+    try { await api.leaveProject(selectedProjectId); leave(); audioCleanup(); setSelectedProjectId(null); setShowProjectMenu(false); fetchProjects(); } catch (err: any) { alert(err.message || 'Failed to leave project'); setShowProjectMenu(false); }
   };
 
   const handleShareProject = async () => {
     if (!selectedProjectId || !currentProject) return;
     setShowProjectMenu(false);
-    try {
-      await fetch(`${API_BASE}/social/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ghost_token')}` },
-        body: JSON.stringify({ text: `Check out my project "${currentProject.name}" 🎵`, projectId: selectedProjectId }),
-      });
-      setShareStatus('Shared to feed!');
-      setTimeout(() => setShareStatus(''), 3000);
-    } catch { setShareStatus('Failed to share'); setTimeout(() => setShareStatus(''), 3000); }
+    try { await fetch(`${API_BASE}/social/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ghost_token')}` }, body: JSON.stringify({ text: `Check out my project "${currentProject.name}" 🎵`, projectId: selectedProjectId }) }); setShareStatus('Shared to feed!'); setTimeout(() => setShareStatus(''), 3000); } catch { setShareStatus('Failed to share'); setTimeout(() => setShareStatus(''), 3000); }
   };
 
-  const handleCreate = async () => {
-    const p = await createProject({ name: 'Untitled' });
-    await fetchProjects();
-    selectProject(p.id);
-  };
+  const handleCreatePack = async () => { try { const pack = await api.createSamplePack({ name: 'Untitled' }); await fetchSamplePacks(); setSelectedPackId(pack.id); setSelectedProjectId(null); fetchPackDetail(pack.id); } catch {} };
+  const handleSelectPack = (id: string) => { setSelectedPackId(id); setSelectedProjectId(null); if (selectedProjectId) { leave(); audioCleanup(); } fetchPackDetail(id); };
+  const handleRenamePack = async (id: string, name: string) => { setSamplePacks((prev) => prev.map((sp) => sp.id === id ? { ...sp, name } : sp)); setSelectedPack((prev) => prev && prev.id === id ? { ...prev, name } : prev); try { await api.updateSamplePack(id, { name }); } catch {} };
+  const handleDeletePack = async (id: string) => { try { await api.deleteSamplePack(id); setSamplePacks((prev) => prev.filter((sp) => sp.id !== id)); if (selectedPackId === id) { setSelectedPackId(null); setSelectedPack(null); } } catch {} };
+  const handleRemoveSampleFromPack = async (packId: string, itemId: string) => { try { await api.removeSamplePackItem(packId, itemId); fetchPackDetail(packId); } catch {} };
 
-  const handleCreatePack = async () => {
-    try {
-      const pack = await api.createSamplePack({ name: 'Untitled' });
-      await fetchSamplePacks();
-      setSelectedPackId(pack.id);
-      setSelectedProjectId(null);
-      fetchPackDetail(pack.id);
-    } catch {}
-  };
-
-  const fetchPackDetail = async (id: string) => {
-    try {
-      const detail = await api.getSamplePack(id);
-      setSelectedPack(detail);
-    } catch {}
-  };
-
-  const handleSelectPack = (id: string) => {
-    setSelectedPackId(id);
-    setSelectedProjectId(null);
-    if (selectedProjectId) { leave(); audioCleanup(); }
-    fetchPackDetail(id);
-  };
-
-  const handleRenamePack = async (id: string, name: string) => {
-    setSamplePacks((prev) => prev.map((sp) => sp.id === id ? { ...sp, name } : sp));
-    setSelectedPack((prev) => prev && prev.id === id ? { ...prev, name } : prev);
-    try { await api.updateSamplePack(id, { name }); } catch {}
-  };
-
-  const handleDeletePack = async (id: string) => {
-    try {
-      await api.deleteSamplePack(id);
-      setSamplePacks((prev) => prev.filter((sp) => sp.id !== id));
-      if (selectedPackId === id) { setSelectedPackId(null); setSelectedPack(null); }
-    } catch {}
-  };
-
-  const handleAddSampleToPack = async (packId: string, sample: { name: string; fileId?: string }) => {
-    try {
-      await api.addSamplePackItem(packId, { name: sample.name, fileId: sample.fileId });
-      fetchPackDetail(packId);
-    } catch {}
-  };
-
-  const handleRemoveSampleFromPack = async (packId: string, itemId: string) => {
-    try {
-      await api.removeSamplePackItem(packId, itemId);
-      fetchPackDetail(packId);
-    } catch {}
-  };
-
-  const fetchInvitations = async () => {
-    try {
-      const res = await fetch(
-        API_BASE + '/invitations',
-        { headers: { Authorization: `Bearer ${useAuthStore.getState().token}` } }
-      );
-      const json = await res.json();
-      if (json.data) setInvitations(json.data);
-    } catch {}
-  };
-
-  const acceptInvite = async (id: string) => {
-    try {
-      await fetch(
-        API_BASE + `/invitations/${id}/accept`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }
-      );
-      fetchInvitations();
-      fetchProjects();
-    } catch {}
-  };
-
-  const declineInvite = async (id: string) => {
-    try {
-      await fetch(
-        API_BASE + `/invitations/${id}/decline`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }
-      );
-      fetchInvitations();
-    } catch {}
-  };
-
-  const members = currentProject?.members || [];
+  // ── Render ──
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden relative">
-      {/* Full-width top bar */}
+      {/* Top bar */}
       <div className="shrink-0 h-[46px] flex items-center pl-3 pr-5 relative" style={{ background: 'transparent' }}>
-        {/* Ghost logo — aligned with presence dock below */}
-        <motion.svg
-          width="36" height="38" viewBox="0 0 20 22" fill="none" className="shrink-0 cursor-pointer"
-          style={{ filter: 'drop-shadow(0 0 4px rgba(0,255,200,0.3))' }}
-          animate={{ y: [0, -2, 0] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <defs>
-            <linearGradient id="ghostGradNav" x1="0" y1="0" x2="20" y2="22" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#00FFC8" />
-              <stop offset="100%" stopColor="#7C3AED" />
-            </linearGradient>
-          </defs>
+        <motion.svg width="36" height="38" viewBox="0 0 20 22" fill="none" className="shrink-0 cursor-pointer" style={{ filter: 'drop-shadow(0 0 4px rgba(0,255,200,0.3))' }} animate={{ y: [0, -2, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
+          <defs><linearGradient id="ghostGradNav" x1="0" y1="0" x2="20" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#00FFC8" /><stop offset="100%" stopColor="#7C3AED" /></linearGradient></defs>
           <path d="M10 1C5.5 1 2 4.5 2 9v8l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V9c0-4.5-3.5-8-8-8z" fill="rgba(0,255,200,0.08)" stroke="url(#ghostGradNav)" strokeWidth="1.5" strokeLinejoin="round" />
-          <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
-          <ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
-          <ellipse cx="7.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
-          <ellipse cx="12.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
+          <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" /><ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
+          <ellipse cx="7.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" /><ellipse cx="12.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
         </motion.svg>
 
-        {/* Center: BPM / Time / Key — absolutely centered */}
         {currentProject && (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-0 shrink-0">
             <div className="flex items-center gap-1 px-3 shrink-0">
               <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">BPM</span>
-              <input
-                type="text" inputMode="numeric" maxLength={3}
-                className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
-                style={{ fontFamily: "'Consolas', monospace" }}
-                value={projectBpm} placeholder=""
-                onChange={(e) => { const val = e.target.value.replace(/\D/g, '').slice(0, 3); setProjectBpm(val); if (bpmTimer.current) clearTimeout(bpmTimer.current); bpmTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { tempo: parseInt(val) }); }, 500); }}
-                onBlur={() => { if (bpmTimer.current) clearTimeout(bpmTimer.current); if (projectBpm) updateProject(currentProject.id, { tempo: parseInt(projectBpm) }); }}
-              />
+              <input type="text" inputMode="numeric" maxLength={3} className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text" style={{ fontFamily: "'Consolas', monospace" }} value={projectBpm} placeholder="" onChange={(e) => { const val = e.target.value.replace(/\D/g, '').slice(0, 3); setProjectBpm(val); if (bpmTimer.current) clearTimeout(bpmTimer.current); bpmTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { tempo: parseInt(val) }); }, 500); }} onBlur={() => { if (bpmTimer.current) clearTimeout(bpmTimer.current); if (projectBpm) updateProject(currentProject.id, { tempo: parseInt(projectBpm) }); }} />
             </div>
             <div className="w-px h-5 bg-white/10 shrink-0" />
             <div className="flex items-center gap-1 px-3 shrink-0">
               <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Time</span>
-              <select
-                className="text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1 py-0 rounded-md transition-colors text-center cursor-pointer appearance-none"
-                style={{ fontFamily: "'Consolas', monospace", backgroundImage: 'none' }}
-                value={projectTimeSig}
-                onChange={(e) => { setProjectTimeSig(e.target.value); updateProject(currentProject.id, { timeSignature: e.target.value } as any); }}
-              >
-                {['2/4','3/4','4/4','5/4','6/4','7/4','6/8','7/8','9/8','12/8'].map(ts => (
-                  <option key={ts} style={{ background: '#1a0e2e', color: '#fff' }} value={ts}>{ts}</option>
-                ))}
+              <select className="text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1 py-0 rounded-md transition-colors text-center cursor-pointer appearance-none" style={{ fontFamily: "'Consolas', monospace", backgroundImage: 'none' }} value={projectTimeSig} onChange={(e) => { setProjectTimeSig(e.target.value); updateProject(currentProject.id, { timeSignature: e.target.value } as any); }}>
+                {['2/4','3/4','4/4','5/4','6/4','7/4','6/8','7/8','9/8','12/8'].map(ts => (<option key={ts} style={{ background: '#1a0e2e', color: '#fff' }} value={ts}>{ts}</option>))}
               </select>
             </div>
             <div className="w-px h-5 bg-white/10 shrink-0" />
             <div className="flex items-center gap-1 px-3 shrink-0">
               <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Key</span>
-              <input
-                type="text" maxLength={3}
-                className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
-                style={{ fontFamily: "'Consolas', monospace" }}
-                value={projectKey} placeholder=""
-                onChange={(e) => { const val = e.target.value.slice(0, 3); setProjectKey(val); if (keyTimer.current) clearTimeout(keyTimer.current); keyTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { key: val }); }, 500); }}
-                onBlur={() => { if (keyTimer.current) clearTimeout(keyTimer.current); if (projectKey) updateProject(currentProject.id, { key: projectKey }); }}
-              />
+              <input type="text" maxLength={3} className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text" style={{ fontFamily: "'Consolas', monospace" }} value={projectKey} placeholder="" onChange={(e) => { const val = e.target.value.slice(0, 3); setProjectKey(val); if (keyTimer.current) clearTimeout(keyTimer.current); keyTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { key: val }); }, 500); }} onBlur={() => { if (keyTimer.current) clearTimeout(keyTimer.current); if (projectKey) updateProject(currentProject.id, { key: projectKey }); }} />
             </div>
           </div>
         )}
 
         <div className="flex-1" />
-
-        {/* Right: nav links */}
         <div className="flex items-center gap-1 shrink-0">
           <button onClick={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); setShowMarketplace(false); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-            Social
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>Social
           </button>
           <button onClick={() => { setShowMarketplace(true); setShowSocial(false); setSelectedProjectId(null); setSelectedPackId(null); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
-            Marketplace
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>Marketplace
           </button>
           <button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            Search
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>Search
           </button>
         </div>
       </div>
 
       <div className="flex flex-1 min-h-0 p-2 gap-2">
-      {/* Presence dock — far left */}
-      <div className="flex flex-col items-center shrink-0 w-11 py-2 z-20">
-        {/* Ghost icon moved to top navbar */}
-        {/* Add friend button */}
-        <motion.button
-          onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }}
-          className="w-9 h-9 rounded-full text-white flex items-center justify-center transition-all mb-3 shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_16px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3)]"
-          style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          title="Add Friend"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </motion.button>
-        <div className="w-6 h-px bg-white/10 mb-3" />
-        {/* Friends list — drag to reorder */}
-        <PresenceFriendsList friends={friends} onlineActivity={onlineActivity} selectProject={selectProject} />
-      </div>
-
-      {/* Left sidebar */}
-      <div className="w-[210px] shrink-0 glass glass-glow flex flex-col">
-        <div className="flex-1 min-h-0 flex flex-col">
-          <ProjectListSidebar
-            projects={projects.filter((p: any) => p.projectType !== 'beat')}
-            allProjects={projects}
-            selectedId={selectedProjectId}
-            onSelect={selectProject}
-            onCreate={handleCreate}
-            onCreateBeat={handleCreateBeat}
-            samplePacks={samplePacks}
-            selectedPackId={selectedPackId}
-            onSelectPack={handleSelectPack}
-            onCreatePack={handleCreatePack}
-            friends={friends}
-          />
+        {/* Presence dock */}
+        <div className="flex flex-col items-center shrink-0 w-11 py-2 z-20">
+          <motion.button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="w-9 h-9 rounded-full text-white flex items-center justify-center transition-all mb-3 shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_16px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3)]" style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} title="Add Friend">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          </motion.button>
+          <div className="w-6 h-px bg-white/10 mb-3" />
+          <PresenceFriendsList friends={friends} onlineActivity={onlineActivity} selectProject={selectProject} />
         </div>
-      </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Popups */}
-        {showSettings && (
-          <SettingsPopup
-            user={user}
-            onSignOut={() => { setShowSettings(false); logout(); }}
-            onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }}
-            onClose={() => setShowSettings(false)}
-            onProfile={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); }}
-          />
-        )}
-        {showNotifs && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
-            <NotificationPopup
-              invitations={invitations}
-              onAccept={(id) => { acceptInvite(id); }}
-              onDecline={(id) => { declineInvite(id); }}
-              notifications={chatNotifications}
-              onMarkRead={() => { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); }}
-            />
-          </>
-        )}
-        {showInvite && selectedProjectId && (
-          <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />
-        )}
-        {showInvite && selectedPackId && !selectedProjectId && (
-          <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedPackId} />
-        )}
+        {/* Sidebar */}
+        <div className="w-[210px] shrink-0 glass glass-glow flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
+            <ProjectListSidebar projects={projects.filter((p: any) => p.projectType !== 'beat')} allProjects={projects} selectedId={selectedProjectId} onSelect={selectProject} onCreate={handleCreate} onCreateBeat={handleCreateBeat} samplePacks={samplePacks} selectedPackId={selectedPackId} onSelectPack={handleSelectPack} onCreatePack={handleCreatePack} friends={friends} />
+          </div>
+        </div>
 
-        {/* Arrangement content + chat */}
-        <div className="flex-1 flex min-h-0 gap-2 pb-2">
-          {selectedProjectId && currentProject ? (
-            <>
-              <div className="flex-1 flex flex-col min-w-0">
-              {/* Project info bar */}
+        {/* Main content */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {showSettings && <SettingsPopup user={user} onSignOut={() => { setShowSettings(false); logout(); }} onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }} onClose={() => setShowSettings(false)} onProfile={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); }} />}
+          {showNotifs && (<><div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} /><NotificationPopup invitations={invitations} onAccept={acceptInvite} onDecline={declineInvite} notifications={chatNotifications} onMarkRead={() => { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); }} /></>)}
+          {showInvite && selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />}
+          {showInvite && selectedPackId && !selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedPackId} />}
+
+          <div className="flex-1 flex min-h-0 gap-2 pb-2">
+            {selectedProjectId && currentProject ? (
+              <>
+                <div className="flex-1 flex flex-col min-w-0">
+                  {/* Project info bar */}
                   <div className="flex items-center gap-3 shrink-0 rounded-xl mb-1 pl-6 pr-3 min-w-0 h-[36px]" style={{ background: 'rgba(10,4,18,0.95)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFC8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <input
-                      className="text-[15px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-2 py-0 rounded-md transition-colors min-w-[60px] flex-1 cursor-text"
-                      value={projectName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setProjectName(val);
-                        if (projectNameTimer.current) clearTimeout(projectNameTimer.current);
-                        projectNameTimer.current = setTimeout(() => {
-                          if (val.trim()) updateProject(currentProject.id, { name: val });
-                        }, 500);
-                      }}
-                      onBlur={() => {
-                        if (projectNameTimer.current) clearTimeout(projectNameTimer.current);
-                        if (projectName.trim() && projectName !== currentProject.name) {
-                          updateProject(currentProject.id, { name: projectName });
-                        }
-                      }}
-                    />
-                    {currentProject.updatedAt && (
-                      <>
-                        <div className="w-px h-5 bg-white/10 shrink-0" />
-                        <span className="text-[14px] text-ghost-green font-medium shrink-0 whitespace-nowrap ml-2">
-                          {new Date(currentProject.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </span>
-                      </>
-                    )}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFC8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                    <input className="text-[15px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-2 py-0 rounded-md transition-colors min-w-[60px] flex-1 cursor-text" value={projectName} onChange={(e) => { const val = e.target.value; setProjectName(val); if (projectNameTimer.current) clearTimeout(projectNameTimer.current); projectNameTimer.current = setTimeout(() => { if (val.trim()) updateProject(currentProject.id, { name: val }); }, 500); }} onBlur={() => { if (projectNameTimer.current) clearTimeout(projectNameTimer.current); if (projectName.trim() && projectName !== currentProject.name) updateProject(currentProject.id, { name: projectName }); }} />
+                    {currentProject.updatedAt && (<><div className="w-px h-5 bg-white/10 shrink-0" /><span className="text-[14px] text-ghost-green font-medium shrink-0 whitespace-nowrap ml-2">{new Date(currentProject.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></>)}
                     <div className="relative z-20" ref={projectMenuRef}>
                       <button onClick={(e) => { e.stopPropagation(); setShowProjectMenu(!showProjectMenu); }} className="w-9 h-9 flex items-center justify-center rounded-md text-ghost-text-muted hover:text-white hover:bg-white/[0.1] transition-colors cursor-pointer">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2.5" /><circle cx="12" cy="12" r="2.5" /><circle cx="12" cy="19" r="2.5" /></svg>
                       </button>
                       {showProjectMenu && projectMenuRef.current && createPortal(
                         <div data-project-menu-portal className="fixed w-40 glass rounded-lg shadow-popup animate-popup border border-white/10 py-1" style={{ zIndex: 9999, top: (projectMenuRef.current.getBoundingClientRect().bottom || 0) + 4, left: (projectMenuRef.current.getBoundingClientRect().right || 0) - 160 }}>
-                          <button onClick={() => { setShowProjectMenu(false); setShowVersionHistory(!showVersionHistory); if (!showVersionHistory && selectedProjectId) fetchVersions(selectedProjectId); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-                            History
-                          </button>
-                          <button onClick={handleShareProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
-                            Share to Feed
-                          </button>
-                          <button onClick={() => { setShowProjectMenu(false); setShowInvite(true); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-                            Invite Collaborator
-                          </button>
+                          <button onClick={() => { setShowProjectMenu(false); setShowVersionHistory(!showVersionHistory); if (!showVersionHistory && selectedProjectId) fetchVersions(selectedProjectId); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>History</button>
+                          <button onClick={handleShareProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>Share to Feed</button>
+                          <button onClick={() => { setShowProjectMenu(false); setShowInvite(true); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>Invite Collaborator</button>
                           <div className="h-px bg-white/5 mx-2 my-1" />
                           {currentProject.ownerId === user?.id ? (
-                            <button onClick={handleDeleteProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                              Delete Project
-                            </button>
+                            <button onClick={handleDeleteProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>Delete Project</button>
                           ) : (
-                            <button onClick={handleLeaveProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                              Leave Project
-                            </button>
+                            <button onClick={handleLeaveProject} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>Leave Project</button>
                           )}
-                        </div>,
-                        document.body
+                        </div>, document.body
                       )}
                     </div>
                   </div>
-              <div className="flex-1 flex flex-col min-w-0 glass glass-glow rounded-2xl overflow-hidden">
-              <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto p-4">
-                {shareStatus && <div className="mb-3 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[13px] text-purple-300 font-medium text-center">{shareStatus}</div>}
+                  <div className="flex-1 flex flex-col min-w-0 glass glass-glow rounded-2xl overflow-hidden">
+                  <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {shareStatus && <div className="mb-3 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[13px] text-purple-300 font-medium text-center">{shareStatus}</div>}
 
-                {/* Version History panel */}
-                {showVersionHistory && (
-                  <div className="mb-4 glass-subtle overflow-hidden">
-                    <div className="px-4 py-2 border-b border-ghost-border/30 flex items-center justify-between">
-                      <span className="text-[13px] font-bold text-ghost-text-secondary uppercase tracking-wider">Version History</span>
-                      <span className="text-[11px] text-ghost-text-muted">{versions.length} snapshot{versions.length !== 1 ? 's' : ''}</span>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto">
-                      {versions.length === 0 ? (
-                        <div className="px-4 py-4 text-center text-[12px] text-ghost-text-muted italic">
-                          No snapshots yet — changes will be saved automatically
+                    {showVersionHistory && (
+                      <div className="mb-4 glass-subtle overflow-hidden">
+                        <div className="px-4 py-2 border-b border-ghost-border/30 flex items-center justify-between">
+                          <span className="text-[13px] font-bold text-ghost-text-secondary uppercase tracking-wider">Version History</span>
+                          <span className="text-[11px] text-ghost-text-muted">{versions.length} snapshot{versions.length !== 1 ? 's' : ''}</span>
                         </div>
-                      ) : (
-                        versions.map((v: any) => (
-                          <div key={v.id} className="flex items-center gap-3 px-4 py-2 border-b border-ghost-border/20 hover:bg-ghost-surface-light/30 transition-colors group">
-                            <div className="shrink-0">
-                              <Avatar name={v.createdByName || 'Unknown'} src={members.find((m: any) => m.userId === v.createdBy)?.avatarUrl || (v.createdBy === user?.id ? user?.avatarUrl : null)} size="sm" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[13px] text-ghost-text-primary font-medium truncate">{v.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[11px] text-ghost-text-muted">{v.createdByName || 'Unknown'}</span>
-                                <span className="text-[11px] text-ghost-green font-medium">
-                                  {new Date(v.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                                </span>
+                        <div className="max-h-48 overflow-y-auto">
+                          {versions.length === 0 ? (
+                            <div className="px-4 py-4 text-center text-[12px] text-ghost-text-muted italic">No snapshots yet — changes will be saved automatically</div>
+                          ) : versions.map((v: any) => (
+                            <div key={v.id} className="flex items-center gap-3 px-4 py-2 border-b border-ghost-border/20 hover:bg-ghost-surface-light/30 transition-colors group">
+                              <div className="shrink-0"><Avatar name={v.createdByName || 'Unknown'} src={members.find((m: any) => m.userId === v.createdBy)?.avatarUrl || (v.createdBy === user?.id ? user?.avatarUrl : null)} size="sm" /></div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] text-ghost-text-primary font-medium truncate">{v.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[11px] text-ghost-text-muted">{v.createdByName || 'Unknown'}</span>
+                                  <span className="text-[11px] text-ghost-green font-medium">{new Date(v.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                                </div>
                               </div>
+                              <span className="text-[11px] font-mono text-ghost-purple bg-ghost-purple/10 px-2 py-0.5 rounded shrink-0">V{v.versionNumber}</span>
+                              {(v.snapshotJson || v.snapshot) && (
+                                <button onClick={() => handleRevert(v.id)} disabled={reverting} className="opacity-0 group-hover:opacity-100 text-[11px] font-semibold px-2 py-1 bg-ghost-surface-light border border-ghost-border rounded text-ghost-text-secondary hover:text-white hover:border-ghost-purple transition-all shrink-0">{reverting ? '...' : 'Revert'}</button>
+                              )}
                             </div>
-                            <span className="text-[11px] font-mono text-ghost-purple bg-ghost-purple/10 px-2 py-0.5 rounded shrink-0">V{v.versionNumber}</span>
-                            {(v.snapshotJson || v.snapshot) && (
-                              <button
-                                onClick={() => handleRevert(v.id)}
-                                disabled={reverting}
-                                className="opacity-0 group-hover:opacity-100 text-[11px] font-semibold px-2 py-1 bg-ghost-surface-light border border-ghost-border rounded text-ghost-text-secondary hover:text-white hover:border-ghost-purple transition-all shrink-0"
-                              >
-                                {reverting ? '...' : 'Revert'}
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Collaborators bar */}
-                <div className="mb-4">
-                <div className="flex items-center gap-4 glass-subtle px-5 h-[68px]">
-                  <div className="flex items-center -space-x-2">
-                    {[...members].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => (
-                      <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}>
-                        <Avatar name={m.displayName || '?'} src={m.avatarUrl} size="md" />
-                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-ghost-online-green" style={{ border: '2px solid #0A0A0F' }} />
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {[...members].filter((m: any) => m.role === 'owner').map((m: any) => (
-                        <span key={m.userId} className="flex items-center gap-1.5">
-                          <span className="text-[15px] font-semibold text-ghost-text-primary">{m.displayName}</span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-ghost-host-gold bg-ghost-host-gold/10 px-1.5 py-0.5 rounded">host</span>
-                        </span>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-ghost-online-green" />
-                      <span className="text-[13px] text-ghost-text-muted">{members.length} collaborator{members.length !== 1 ? 's' : ''} online</span>
-                    </div>
-                  </div>
+                    )}
 
-                  <motion.button
-                    onClick={() => setShowInvite(!showInvite)}
-                    className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-                    style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="8.5" cy="7" r="4" />
-                      <line x1="20" y1="8" x2="20" y2="14" />
-                      <line x1="23" y1="11" x2="17" y2="11" />
-                    </svg>
-                    Invite
-                  </motion.button>
+                    {/* Collaborators bar */}
+                    <div className="mb-4">
+                    <div className="flex items-center gap-4 glass-subtle px-5 h-[68px]">
+                      <div className="flex items-center -space-x-2">
+                        {[...members].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => (
+                          <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}><Avatar name={m.displayName || '?'} src={m.avatarUrl} size="md" /><span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-ghost-online-green" style={{ border: '2px solid #0A0A0F' }} /></div>
+                        ))}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {[...members].filter((m: any) => m.role === 'owner').map((m: any) => (
+                            <span key={m.userId} className="flex items-center gap-1.5"><span className="text-[15px] font-semibold text-ghost-text-primary">{m.displayName}</span><span className="text-[10px] font-bold uppercase tracking-wider text-ghost-host-gold bg-ghost-host-gold/10 px-1.5 py-0.5 rounded">host</span></span>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5"><span className="w-2 h-2 rounded-full bg-ghost-online-green" /><span className="text-[13px] text-ghost-text-muted">{members.length} collaborator{members.length !== 1 ? 's' : ''} online</span></div>
+                      </div>
+                      <motion.button onClick={() => setShowInvite(!showInvite)} className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0" style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>Invite
+                      </motion.button>
+                    </div>
+                    </div>
 
+                    {/* Arrangement */}
+                    <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
+                      <BarRuler />
+                      <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} compact={trackZoom === 'half'} />
+                      <div className="relative space-y-1">
+                        {[...currentProject.tracks].reverse().map((track: any) => (
+                          <TrackWithWidth key={track.id} track={track} selectedProjectId={selectedProjectId!} deleteTrack={deleteTrack} updateTrack={updateTrack} trackZoom={trackZoom} fetchProject={fetchProject} />
+                        ))}
+                        <BarGridOverlay />
+                      </div>
+                      <ArrangementPlayhead />
+                    </ArrangementDropZone>
+                  </div>
+                  </div>
+                  </div>
                 </div>
-                </div>
 
-                {/* Arrangement view with bar ruler, drop zone, and tracks */}
-                <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
-                  <BarRuler />
-                  <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} compact={trackZoom === 'half'} />
-                  <div className="relative space-y-1">
-                    {[...currentProject.tracks].reverse().map((track: any) => (
-                      <TrackWithWidth key={track.id} track={track} selectedProjectId={selectedProjectId!} deleteTrack={deleteTrack} updateTrack={updateTrack} trackZoom={trackZoom} fetchProject={fetchProject} />
-                    ))}
-                    <BarGridOverlay />
-                  </div>
-                  <ArrangementPlayhead />
-                </ArrangementDropZone>
-              </div>
-              </div>
-              </div>
-              </div>
-
-              {/* Right panel: icons + video + chat */}
-              <div className={`relative flex flex-col min-h-0 h-full gap-2 ${chatCollapsed ? 'w-4 shrink-0' : 'overflow-hidden'}`}>
-                <button
-                  onClick={() => setChatCollapsed(!chatCollapsed)}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors"
-                  title={chatCollapsed ? 'Show chat' : 'Hide chat'}
-                >
-                  <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ghost-text-muted">
-                    {chatCollapsed ? <polyline points="2,1 6,6 2,11" /> : <polyline points="6,1 2,6 6,11" />}
-                  </svg>
-                </button>
-                {!chatCollapsed && (
-                  <>
-                  {/* Icons bar */}
-                  <div className="w-[300px] shrink-0 flex items-center justify-evenly glass glass-glow rounded-2xl h-11">
-                    <button onClick={() => setVideoGridHidden(!videoGridHidden)} className={`transition-colors ${videoGridHidden ? 'text-ghost-green' : 'text-white/40 hover:text-ghost-green'}`} title={videoGridHidden ? 'Show Video Grid' : 'Hide Video Grid'}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-                    </button>
-                    <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && chatNotifications.length > 0) { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); } }} className="text-white/40 hover:text-ghost-green transition-colors">
-                      <BellIcon count={invitations.length + chatNotifications.length} />
-                    </button>
-                    <button className="text-white/40 hover:text-ghost-green transition-colors" title="Inbox">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-                    </button>
-                    <button onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} className="shrink-0 rounded-full outline-none focus:outline-none">
-                      <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" />
-                    </button>
-                  </div>
-                  {/* Video grid — toggleable */}
-                  {!videoGridHidden && (
-                    <div className="w-[300px] shrink-0">
-                      <VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} />
+                {/* Right panel */}
+                <div className={`relative flex flex-col min-h-0 h-full gap-2 ${chatCollapsed ? 'w-4 shrink-0' : 'overflow-hidden'}`}>
+                  <button onClick={() => setChatCollapsed(!chatCollapsed)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors" title={chatCollapsed ? 'Show chat' : 'Hide chat'}>
+                    <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ghost-text-muted">{chatCollapsed ? <polyline points="2,1 6,6 2,11" /> : <polyline points="6,1 2,6 6,11" />}</svg>
+                  </button>
+                  {!chatCollapsed && (
+                    <>
+                    <div className="w-[300px] shrink-0 flex items-center justify-evenly glass glass-glow rounded-2xl h-11">
+                      <button onClick={() => setVideoGridHidden(!videoGridHidden)} className={`transition-colors ${videoGridHidden ? 'text-ghost-green' : 'text-white/40 hover:text-ghost-green'}`} title={videoGridHidden ? 'Show Video Grid' : 'Hide Video Grid'}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg></button>
+                      <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && chatNotifications.length > 0) { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); } }} className="text-white/40 hover:text-ghost-green transition-colors"><BellIcon count={invitations.length + chatNotifications.length} /></button>
+                      <button className="text-white/40 hover:text-ghost-green transition-colors" title="Inbox"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg></button>
+                      <button onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} className="shrink-0 rounded-full outline-none focus:outline-none"><Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" /></button>
                     </div>
+                    {!videoGridHidden && <div className="w-[300px] shrink-0"><VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} /></div>}
+                    <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl"><ChatPanel /></div>
+                    </>
                   )}
-                  <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl">
-                    <ChatPanel />
-                  </div>
-                  </>
-                )}
-              </div>
-            </>
-          ) : selectedPackId && selectedPack ? (
-            <>
-              <SamplePackContentView
-                pack={selectedPack}
-                onRenamePack={handleRenamePack}
-                onDeletePack={handleDeletePack}
-                onRemoveSample={handleRemoveSampleFromPack}
-                onRefresh={fetchPackDetail}
-                members={members}
-                onInvite={() => setShowInvite(true)}
-              />
-              {/* Right panel: chat */}
-              <div className={`relative flex flex-col min-h-0 h-full gap-2 ${chatCollapsed ? 'w-4 shrink-0' : 'overflow-hidden'}`}>
-                <button
-                  onClick={() => setChatCollapsed(!chatCollapsed)}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors"
-                  title={chatCollapsed ? 'Show chat' : 'Hide chat'}
-                >
-                  <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ghost-text-muted">
-                    {chatCollapsed ? <polyline points="2,1 6,6 2,11" /> : <polyline points="6,1 2,6 6,11" />}
-                  </svg>
-                </button>
-                {!chatCollapsed && (
-                  <>
-                  {/* Video grid — persistent above chat */}
-                  <div className="w-[300px] shrink-0">
-                    <VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} />
-                  </div>
-                  <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl">
-                    <ChatPanel />
-                  </div>
-                  </>
-                )}
-              </div>
-            </>
-          ) : showSocial ? (
-            <SocialFeed user={user} friends={friends} />
-          ) : showMarketplace ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-5">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                  </svg>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Marketplace</h2>
-                <p className="text-[15px] text-white/40">Coming Soon</p>
-                <p className="text-[13px] text-white/25 mt-2 max-w-xs mx-auto">Buy and sell beats, samples, and presets with producers around the world.</p>
+              </>
+            ) : selectedPackId && selectedPack ? (
+              <>
+                <SamplePackContentView pack={selectedPack} onRenamePack={handleRenamePack} onDeletePack={handleDeletePack} onRemoveSample={handleRemoveSampleFromPack} onRefresh={fetchPackDetail} members={members} onInvite={() => setShowInvite(true)} />
+                <div className={`relative flex flex-col min-h-0 h-full gap-2 ${chatCollapsed ? 'w-4 shrink-0' : 'overflow-hidden'}`}>
+                  <button onClick={() => setChatCollapsed(!chatCollapsed)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors" title={chatCollapsed ? 'Show chat' : 'Hide chat'}>
+                    <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ghost-text-muted">{chatCollapsed ? <polyline points="2,1 6,6 2,11" /> : <polyline points="6,1 2,6 6,11" />}</svg>
+                  </button>
+                  {!chatCollapsed && (
+                    <>
+                    <div className="w-[300px] shrink-0"><VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} /></div>
+                    <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl"><ChatPanel /></div>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : showSocial ? (
+              <SocialFeed user={user} friends={friends} />
+            ) : showMarketplace ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-5"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg></div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Marketplace</h2>
+                  <p className="text-[15px] text-white/40">Coming Soon</p>
+                  <p className="text-[13px] text-white/25 mt-2 max-w-xs mx-auto">Buy and sell beats, samples, and presets with producers around the world.</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-ghost-text-muted text-sm italic">
-              Select a project or create a new one
-            </div>
-          )}
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-ghost-text-muted text-sm italic">Select a project or create a new one</div>
+            )}
+          </div>
         </div>
       </div>
-      </div>{/* close inner horizontal flex */}
-      {/* Full-width transport bar at bottom */}
+
       {selectedProjectId && currentProject && (
         <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} />
       )}

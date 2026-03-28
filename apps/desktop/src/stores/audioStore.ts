@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../lib/api';
+import { FFT_SIZE, SMOOTHING_TIME_CONSTANT, PITCH_MIN, PITCH_MAX } from '../lib/constants';
 
 interface LoadedTrack {
   id: string;
@@ -10,7 +11,7 @@ interface LoadedTrack {
   muted: boolean;
   soloed: boolean;
   bpm: number;
-  pitch: number; // semitones offset (-12 to +12)
+  pitch: number;
 }
 
 interface UndoSnapshot {
@@ -79,8 +80,8 @@ function getCtx() {
     audioCtx = new AudioContext();
     masterGain = audioCtx.createGain();
     analyserNode = audioCtx.createAnalyser();
-    analyserNode.fftSize = 256;
-    analyserNode.smoothingTimeConstant = 0.8;
+    analyserNode.fftSize = FFT_SIZE;
+    analyserNode.smoothingTimeConstant = SMOOTHING_TIME_CONSTANT;
     masterGain.connect(analyserNode);
     analyserNode.connect(audioCtx.destination);
   }
@@ -94,18 +95,11 @@ function getMaster() {
 
 export const useAudioStore = create<AudioState>((set, get) => {
 
-  function getRate(_track: LoadedTrack): number {
-    // Auto-warp disabled — play all tracks at original speed
-    return 1;
-  }
-
-  // Duration = longest track adjusted for its playback rate
   function recalcDuration() {
     const { loadedTracks } = get();
     let maxDur = 0;
     loadedTracks.forEach((t) => {
-      const dur = t.buffer.duration / getRate(t);
-      if (dur > maxDur) maxDur = dur;
+      if (t.buffer.duration > maxDur) maxDur = t.buffer.duration;
     });
     set({ duration: maxDur });
   }
@@ -453,7 +447,7 @@ export const useAudioStore = create<AudioState>((set, get) => {
       const { loadedTracks } = get();
       const track = loadedTracks.get(trackId);
       if (track) {
-        track.pitch = Math.max(-12, Math.min(12, semitones));
+        track.pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, semitones));
         set({ loadedTracks: new Map(loadedTracks) });
         // Restart playback to apply new pitch cleanly
         restartIfPlaying();

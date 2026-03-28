@@ -20,6 +20,7 @@ import notificationRoutes from './routes/notifications.js';
 import socialRoutes from './routes/social.js';
 import { setupWebSocket } from './ws/index.js';
 import { initDatabase } from './db/index.js';
+import { authMiddleware } from './middleware/auth.js';
 
 // Initialize database tables (async now with Turso)
 await initDatabase();
@@ -76,8 +77,8 @@ app.use('/assets/*', serveStatic({ root: '../desktop/dist' }));
 app.get('/', serveStatic({ root: './public', path: '/index.html' }));
 app.get('/', serveStatic({ root: '../desktop/dist', path: '/index.html' }));
 
-// One-time DB reset
-app.delete('/api/v1/admin/reset-all', async (c) => {
+// One-time DB reset (requires authentication)
+app.delete('/api/v1/admin/reset-all', authMiddleware, async (c) => {
   const { client } = await import('./db/index.js');
   try {
     await client.executeMultiple(`

@@ -4,7 +4,9 @@ import type { PresenceInfo } from '@ghost/types';
 
 type GhostSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+import { SERVER_BASE, SOCKET_TRANSPORTS } from './constants';
+
+const SOCKET_URL = import.meta.env.VITE_WS_URL || SERVER_BASE;
 
 let socket: GhostSocket | null = null;
 let globalOnlineCallback: ((users: any[]) => void) | null = null;
@@ -25,7 +27,7 @@ export function connectSocket(token: string): GhostSocket {
 
   socket = io(SOCKET_URL, {
     auth: { token },
-    transports: ['websocket'],
+    transports: [...SOCKET_TRANSPORTS],
   });
 
   socket.on('connect', () => console.log('[WS] Connected'));
