@@ -14,23 +14,21 @@ export function useCursorTracking(
 
     const handleMouseMove = (e: MouseEvent) => {
       const pid = projectIdRef.current;
-      const el = containerRef.current;
-      if (!pid || !el) return;
+      if (!pid) return;
 
       const now = Date.now();
       if (now - lastEmit.current < THROTTLE_MS) return;
       lastEmit.current = now;
 
-      const rect = el.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      // Use viewport-relative percentages so cursor maps consistently
+      // regardless of window size or layout differences
+      const x = (e.clientX / window.innerWidth) * 100;
+      const y = (e.clientY / window.innerHeight) * 100;
 
-      if (x >= 0 && x <= 100 && y >= 0 && y <= 100) {
-        sendCursorMove(pid, x, y);
-      }
+      sendCursorMove(pid, x, y);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     return () => document.removeEventListener('mousemove', handleMouseMove);
-  }, [containerRef]);
+  }, []);
 }
