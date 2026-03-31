@@ -3,6 +3,7 @@ import type { PresenceInfo, ChatMessage, CursorPosition } from '@ghost/types';
 import { getSocket, joinProject, leaveProject, sendChat, sendSessionAction, deleteChatMessage } from '../lib/socket';
 import { api } from '../lib/api';
 import { useAuthStore } from './authStore';
+import { useProjectStore } from './projectStore';
 
 interface SessionState {
   isConnected: boolean;
@@ -21,13 +22,6 @@ interface SessionState {
 // Stored references so we can remove on leave
 let reconnectHandler: (() => void) | null = null;
 let chatPollTimer: ReturnType<typeof setInterval> | null = null;
-
-// Callback for project-updated events — set by PluginLayout
-let projectUpdatedCallback: ((data: { projectId: string; reason: string }) => void) | null = null;
-
-export function onProjectUpdated(cb: typeof projectUpdatedCallback) {
-  projectUpdatedCallback = cb;
-}
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   isConnected: false,
@@ -127,7 +121,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     socket.on('project-updated', (data) => {
-      if (projectUpdatedCallback) projectUpdatedCallback(data);
+      const pid = get().currentProjectId;
+      if (pid && data.projectId === pid) {
+        useProjectStore.getState().fetchProject(pid);
+        useProjectStore.getState().fetchVersions(pid);
+      }
     });
 
     // Polling fallback: fetch new chat messages periodically in case

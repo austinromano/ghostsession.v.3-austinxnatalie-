@@ -7,7 +7,7 @@ import { api } from '../../lib/api';
 import { onGlobalOnlineUsers, type OnlineUser } from '../../lib/socket';
 import Avatar from '../common/Avatar';
 import ChatPanel from '../session/ChatPanel';
-import { useSessionStore, onProjectUpdated } from '../../stores/sessionStore';
+import { useSessionStore } from '../../stores/sessionStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { API_BASE } from '../../lib/constants';
 import { audioBufferCache } from '../../lib/audio';
@@ -307,28 +307,14 @@ export default function PluginLayout() {
     api.listUsers().then(setFriends).catch(() => {});
   }, []);
 
-  // Event-driven project refresh + polling fallback for WebView
+  // Polling fallback: refresh project data periodically in case
+  // socket.io project-updated events are missed (e.g. plugin WebView)
   useEffect(() => {
     if (!selectedProjectId) return;
-    onProjectUpdated((data) => {
-      if (data.projectId === selectedProjectId) {
-        fetchProject(selectedProjectId);
-        fetchVersions(selectedProjectId);
-      }
-    });
-
-    // Polling fallback: refresh project data periodically in case
-    // socket.io project-updated events are missed (e.g. plugin WebView)
     const pollTimer = setInterval(() => {
-      if (selectedProjectId) {
-        fetchProject(selectedProjectId);
-      }
+      fetchProject(selectedProjectId);
     }, 5000);
-
-    return () => {
-      onProjectUpdated(null);
-      clearInterval(pollTimer);
-    };
+    return () => clearInterval(pollTimer);
   }, [selectedProjectId]);
 
   useEffect(() => {
