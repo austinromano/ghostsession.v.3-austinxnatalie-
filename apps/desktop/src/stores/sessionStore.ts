@@ -71,10 +71,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set({ onlineUsers: users });
     });
 
-    socket.on('user-joined', ({ userId, displayName, colour }) => {
+    socket.on('user-joined', ({ userId, displayName, colour, avatarUrl }) => {
       set((s) => ({
         onlineUsers: [...s.onlineUsers.filter((u) => u.userId !== userId), {
-          userId, displayName, colour, isOnline: true, lastSeen: new Date().toISOString(),
+          userId, displayName, colour, avatarUrl, isOnline: true, lastSeen: new Date().toISOString(),
         }],
       }));
     });

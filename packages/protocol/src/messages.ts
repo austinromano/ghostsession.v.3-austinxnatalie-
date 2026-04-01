@@ -96,6 +96,7 @@ export interface ServerToClientEvents {
     userId: string;
     displayName: string;
     colour: string;
+    avatarUrl?: string | null;
   }) => void;
   'user-left': (data: {
     userId: string;
@@ -141,4 +142,5 @@ export interface SocketData {
   userId: string;
   displayName: string;
   colour: string;
+  avatarUrl: string | null;
 }
