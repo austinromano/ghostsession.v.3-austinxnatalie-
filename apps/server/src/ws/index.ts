@@ -45,6 +45,7 @@ export function setupWebSocket(httpServer: HTTPServer) {
     socket.data.userId = user.id;
     socket.data.displayName = user.displayName;
     socket.data.colour = userColour(user.id);
+    socket.data.avatarUrl = user.avatarUrl || null;
     next();
   });
 

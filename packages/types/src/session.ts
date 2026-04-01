@@ -22,6 +22,7 @@ export interface PresenceInfo {
   userId: string;
   displayName: string;
   colour: string;
+  avatarUrl?: string | null;
   isOnline: boolean;
   lastSeen: string;
 }

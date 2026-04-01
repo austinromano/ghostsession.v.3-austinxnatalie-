@@ -28,6 +28,7 @@ export function registerPresenceHandlers(io: Server, socket: GhostSocket, global
       userId: socket.data.userId,
       displayName: socket.data.displayName,
       colour: socket.data.colour,
+      avatarUrl: socket.data.avatarUrl,
       isOnline: true,
       lastSeen: new Date().toISOString(),
     };
@@ -51,6 +52,7 @@ export function registerPresenceHandlers(io: Server, socket: GhostSocket, global
       userId: socket.data.userId,
       displayName: socket.data.displayName,
       colour: socket.data.colour,
+      avatarUrl: socket.data.avatarUrl,
     });
 
     const users = Array.from(roomUsers.get(room)!.values());
