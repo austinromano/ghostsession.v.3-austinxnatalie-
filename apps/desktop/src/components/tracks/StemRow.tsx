@@ -100,7 +100,12 @@ export default memo(function StemRow({
     if (dragTriggeredRef.current) return;
     dragTriggeredRef.current = true;
     setTimeout(() => { dragTriggeredRef.current = false; }, 2000);
-    const ghostUrl = `ghost://drag-to-daw?url=${encodeURIComponent(downloadUrl)}&fileName=${encodeURIComponent(name + '.wav')}`;
+    const params = `url=${encodeURIComponent(downloadUrl)}&fileName=${encodeURIComponent(name + '.wav')}`;
+    try {
+      (window as any).chrome?.webview?.postMessage?.('drag-to-daw:' + params);
+    } catch {}
+    // Fallback: iframe approach
+    const ghostUrl = `ghost://drag-to-daw?${params}`;
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = ghostUrl;

@@ -22,6 +22,17 @@ bool GhostWebView::pageAboutToLoad(const juce::String& newURL)
     return true; // Allow normal navigation
 }
 
+void GhostWebView::webMessageReceived(const juce::String& message)
+{
+    GhostLog::write("[WebView] postMessage received: " + message);
+
+    if (message.startsWith("drag-to-daw:"))
+    {
+        auto params = message.fromFirstOccurrenceOf(":", false, false);
+        handleDragToDaw("ghost://drag-to-daw?" + params);
+    }
+}
+
 juce::String GhostWebView::getQueryParam(const juce::String& url, const juce::String& paramName)
 {
     // Find ?key=value or &key=value
