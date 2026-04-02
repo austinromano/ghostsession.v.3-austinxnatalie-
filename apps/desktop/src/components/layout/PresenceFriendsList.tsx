@@ -3,7 +3,7 @@ import { motion, Reorder } from 'framer-motion';
 import Avatar from '../common/Avatar';
 import { type OnlineUser } from '../../lib/socket';
 
-function PresenceFriendsList({ friends, onlineActivity, selectProject }: { friends: any[]; onlineActivity: Map<string, OnlineUser>; selectProject: (id: string) => void }) {
+function PresenceFriendsList({ friends, onlineActivity, selectProject, onRemoveFriend }: { friends: any[]; onlineActivity: Map<string, OnlineUser>; selectProject: (id: string) => void; onRemoveFriend?: (id: string) => void }) {
   const sourceFriends = friends;
 
   const [orderedIds, setOrderedIds] = useState<string[]>(() => {
@@ -65,7 +65,8 @@ function PresenceFriendsList({ friends, onlineActivity, selectProject }: { frien
                 <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full" style={{ background: 'transparent', border: '2.5px solid #0A0412', boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.2)' }} />
               )}
             </div>
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+            {/* Hover tooltip with remove button */}
+            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity whitespace-nowrap z-50">
               <div className="px-3 py-1.5 rounded-lg text-[11px]" style={{ background: 'rgba(20,10,35,0.97)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(12px)' }}>
                 <div className="font-semibold text-white">{f.displayName}</div>
                 {projectName ? (
@@ -74,6 +75,14 @@ function PresenceFriendsList({ friends, onlineActivity, selectProject }: { frien
                   <div className="text-white/40 mt-0.5">Online</div>
                 ) : (
                   <div className="text-white/30 mt-0.5">Offline</div>
+                )}
+                {onRemoveFriend && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRemoveFriend(f.id); }}
+                    className="mt-1.5 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Remove Friend
+                  </button>
                 )}
               </div>
             </div>

@@ -102,6 +102,9 @@ export const api = {
 
   // Users
   listUsers: () => request<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>('GET', '/users'),
+  listFriends: () => request<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>('GET', '/users/friends'),
+  addFriend: (userId: string) => request<{ message: string }>('POST', `/users/${userId}/friend`),
+  removeFriend: (userId: string) => request<{ message: string }>('DELETE', `/users/${userId}/friend`),
 
   // Likes
   toggleLike: (trackId: string) => request<{ liked: boolean; count: number }>('POST', `/tracks/${trackId}/like`),

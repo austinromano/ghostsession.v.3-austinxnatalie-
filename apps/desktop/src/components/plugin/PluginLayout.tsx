@@ -304,7 +304,7 @@ export default function PluginLayout() {
 
   useEffect(() => {
     fetchProjects();
-    api.listUsers().then(setFriends).catch(() => {});
+    api.listFriends().then(setFriends).catch(() => {});
   }, []);
 
   // Polling fallback: refresh project data periodically in case
@@ -329,13 +329,24 @@ export default function PluginLayout() {
   useEffect(() => {
     if (!friendSearchQuery.trim()) { setFriendSearchResults([]); return; }
     const q = friendSearchQuery.toLowerCase();
-    const matches = friends.filter((f) => f.displayName.toLowerCase().includes(q) || (f as any).email?.toLowerCase().includes(q));
-    if (matches.length > 0) { setFriendSearchResults(matches as any); return; }
+    const friendIds = new Set(friends.map(f => f.id));
     const timer = setTimeout(() => {
-      api.listUsers().then((users) => { setFriendSearchResults(users.filter((u) => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))); }).catch(() => {});
+      api.listUsers().then((users) => {
+        setFriendSearchResults(
+          users
+            .filter((u) => u.displayName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+            .map(u => ({ ...u, isFriend: friendIds.has(u.id) }))
+        );
+      }).catch(() => {});
     }, 300);
     return () => clearTimeout(timer);
   }, [friendSearchQuery, friends]);
+
+  const handleAddFriend = async (userId: string) => {
+    await api.addFriend(userId);
+    const updated = await api.listFriends();
+    setFriends(updated);
+  };
 
   useEffect(() => {
     if (!selectedProjectId && projects.length > 0) selectProject(projects[0].id);
@@ -441,7 +452,7 @@ export default function PluginLayout() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
         </motion.button>
         <div className="w-6 h-px bg-white/10 mb-5" />
-        <PresenceFriendsList friends={friends} onlineActivity={onlineActivity} selectProject={selectProject} />
+        <PresenceFriendsList friends={friends} onlineActivity={onlineActivity} selectProject={selectProject} onRemoveFriend={async (id) => { await api.removeFriend(id); setFriends(friends.filter(f => f.id !== id)); }} />
       </div>
 
       {/* Main column */}
