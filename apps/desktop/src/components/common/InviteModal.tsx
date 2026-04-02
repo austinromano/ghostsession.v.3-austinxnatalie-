@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../../lib/api';
 
-export default function InviteModal({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId: string }) {
+export default function InviteModal({ open, onClose, projectId, onInvited }: { open: boolean; onClose: () => void; projectId: string; onInvited?: () => void }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [suggestions, setSuggestions] = useState<{ id: string; displayName: string; email: string; avatarUrl: string | null }[]>([]);
@@ -37,6 +37,7 @@ export default function InviteModal({ open, onClose, projectId }: { open: boolea
       setStatus('Invited!');
       setQuery('');
       setSuggestions([]);
+      if (onInvited) onInvited();
       setTimeout(() => { setStatus(''); onClose(); }, 1000);
     } catch (err: any) {
       setStatus(err.message || 'Invite failed');

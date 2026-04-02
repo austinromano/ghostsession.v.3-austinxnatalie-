@@ -519,8 +519,8 @@ export default function PluginLayout() {
           <RemoteCursors />
           {showSettings && (<><div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)} /><SettingsPopup user={user} onSignOut={() => { setShowSettings(false); logout(); }} onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }} onClose={() => setShowSettings(false)} onProfile={() => { setShowSocial(true); setSelectedProjectId(null); samplePackState.setSelectedPackId(null); }} /></>)}
           {showNotifs && (<><div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} /><NotificationPopup invitations={notifs.invitations} onAccept={acceptInvite} onDecline={declineInvite} notifications={notifs.notifications} onMarkRead={notifs.markAllRead} /></>)}
-          {showInvite && selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />}
-          {showInvite && samplePackState.selectedPackId && !selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={samplePackState.selectedPackId!} />}
+          {showInvite && selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} onInvited={() => api.listFriends().then(setFriends).catch(() => {})} />}
+          {showInvite && samplePackState.selectedPackId && !selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={samplePackState.selectedPackId!} onInvited={() => api.listFriends().then(setFriends).catch(() => {})} />}
 
           <div className="flex-1 flex min-h-0 gap-2">
             {selectedProjectId && currentProject ? (

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/index.js';
-import { projects, projectMembers, tracks, users, invitations, chatMessages } from '../db/schema.js';
+import { projects, projectMembers, tracks, users, invitations, chatMessages, follows } from '../db/schema.js';
 import { eq, or, and, desc, like } from 'drizzle-orm';
 import { authMiddleware, type AuthUser } from '../middleware/auth.js';
 import { createAutoSnapshot } from '../lib/autoSnapshot.js';
@@ -171,6 +171,20 @@ projectRoutes.post('/:id/members', async (c) => {
       createdAt: new Date().toISOString(),
     }).run();
   } catch {} // duplicate invitation
+
+  // Auto-add as friend (both directions) so they show in presence bar
+  const existingFollow = await db.select().from(follows)
+    .where(and(eq(follows.followerId, user.id), eq(follows.followingId, invitee.id)))
+    .limit(1).all();
+  if (existingFollow.length === 0) {
+    await db.insert(follows).values({ followerId: user.id, followingId: invitee.id, createdAt: new Date().toISOString() }).run();
+  }
+  const reverseFollow = await db.select().from(follows)
+    .where(and(eq(follows.followerId, invitee.id), eq(follows.followingId, user.id)))
+    .limit(1).all();
+  if (reverseFollow.length === 0) {
+    await db.insert(follows).values({ followerId: invitee.id, followingId: user.id, createdAt: new Date().toISOString() }).run();
+  }
 
   await postActivityComment(projectId, user.id, `📨 invited ${invitee.displayName} to the project`);
 
