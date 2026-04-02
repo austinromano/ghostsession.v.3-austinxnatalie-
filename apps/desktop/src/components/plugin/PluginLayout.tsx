@@ -590,8 +590,22 @@ export default function PluginLayout() {
                       <div className="flex items-center -space-x-2">
                         {[...members].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => {
                           const isOnline = onlineUsers.some((u) => u.userId === m.userId);
+                          const isOwner = currentProject?.ownerId === user?.id;
+                          const isSelf = m.userId === user?.id;
                           return (
-                          <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}><Avatar name={m.displayName || '?'} src={m.avatarUrl} size="lg" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />{isOnline && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full" style={{ background: '#23A559', border: '2.5px solid #0A0A0F' }} />}</div>
+                          <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}>
+                            <Avatar name={m.displayName || '?'} src={m.avatarUrl} size="lg" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />
+                            {isOnline && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full" style={{ background: '#23A559', border: '2.5px solid #0A0A0F' }} />}
+                            {isOwner && !isSelf && m.role !== 'owner' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${m.displayName} from this project?`)) { api.removeMember(selectedProjectId!, m.userId).then(() => fetchProject(selectedProjectId!)); } }}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-400 z-20"
+                                title={`Remove ${m.displayName}`}
+                              >
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                              </button>
+                            )}
+                          </div>
                           );
                         })}
                       </div>
